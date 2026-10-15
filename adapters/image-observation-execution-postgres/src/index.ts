@@ -20,6 +20,7 @@ type Row = {
 };
 const fromRow = (row: Row): ImageObservationExecutionRecord => ({
   ...row.record_json,
+  transportKind: row.record_json.transportKind ?? 'ISOLATED_FAKE',
   state: row.state,
   ...(row.attempt_id === null ? {} : { attemptId: row.attempt_id }),
   ...(row.output_json === null ? {} : { output: row.output_json }),
@@ -62,6 +63,12 @@ export class PostgresImageObservationExecutionRepository implements ImageObserva
       record.transformationRevisionId
     )
       invalid('Only an unstarted image request may be created');
+    if (
+      !['ISOLATED_FAKE', 'ISOLATED_LIVE_ACCEPTANCE'].includes(record.transportKind ?? '') ||
+      (record.transportKind === 'ISOLATED_LIVE_ACCEPTANCE') !==
+        (typeof record.acceptanceId === 'string' && record.acceptanceId.length > 0)
+    )
+      invalid('Image transport acceptance identity is invalid');
     const snapshot = record.snapshot;
     await this.pool.query(
       `INSERT INTO ai.image_observation_executions
@@ -97,7 +104,9 @@ export class PostgresImageObservationExecutionRepository implements ImageObserva
       existing.requestDigest !== record.requestDigest ||
       stableJson(existing.executionIdentity) !== stableJson(record.executionIdentity) ||
       existing.credentialFingerprint !== record.credentialFingerprint ||
-      existing.adapterVersion !== record.adapterVersion
+      existing.adapterVersion !== record.adapterVersion ||
+      existing.transportKind !== record.transportKind ||
+      (existing.acceptanceId ?? undefined) !== (record.acceptanceId ?? undefined)
     )
       invalid('Image source or durable execution authority does not match');
     return existing;

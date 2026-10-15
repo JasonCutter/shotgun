@@ -2887,7 +2887,7 @@
             "bindingPort": null,
             "bindingVia": "value of discoveryRuntimeRepository is the declared return type of a helper",
             "receiverType": "PostgresDiscoveryRuntimeRepository",
-            "line": 1090,
+            "line": 1129,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -2932,7 +2932,7 @@
             "bindingPort": null,
             "bindingVia": "value of discoveryRuntimeRepository is the declared return type of a helper",
             "receiverType": "PostgresDiscoveryRuntimeRepository",
-            "line": 1111,
+            "line": 1150,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -8972,7 +8972,7 @@
             "bindingPort": null,
             "bindingVia": "value of sourcesProductService is the declared return type of a helper",
             "receiverType": "PostgresSourcesProductService",
-            "line": 1579,
+            "line": 1618,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -12174,7 +12174,7 @@
             "bindingPort": null,
             "bindingVia": "value of knowledgeResetPersistence is the declared return type of a helper",
             "receiverType": "PostgresKnowledgeResetPersistence",
-            "line": 1308,
+            "line": 1347,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -12354,7 +12354,7 @@
             "bindingPort": "VPImageObservationLedgerPort",
             "bindingVia": "file-scope declaration of ledger annotated VPImageObservationLedgerPort",
             "receiverType": "VPImageObservationLedgerPort",
-            "line": 197,
+            "line": 201,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -12458,7 +12458,7 @@
             "bindingPort": null,
             "bindingVia": "value of vpRelationJobs is the declared return type of a helper",
             "receiverType": "PostgresVPRelationJobs",
-            "line": 1612,
+            "line": 1651,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]

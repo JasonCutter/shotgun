@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { sha256Text } from '../../packages/contracts/src/index.js';
-import { createIsolatedFakeImageExecutionResolver } from '../../assemblies/shotgun-app/src/image-fake-execution-resolver.js';
+import {
+  createIsolatedFakeImageExecutionResolver,
+  createIsolatedLiveImageExecutionResolver,
+} from '../../assemblies/shotgun-app/src/image-fake-execution-resolver.js';
 import type { AIProviderExecutionResolverPort } from '../../modules/ai-provider/src/index.js';
 import type { CredentialVaultPort } from '../../modules/credential-vault/src/index.js';
 import {
@@ -94,6 +97,155 @@ const fixture = () => {
 };
 
 describe('isolated image execution durable ordering', () => {
+  it('requires a bound live acceptance and records a distinct transport kind', async () => {
+    const f = fixture();
+    Object.assign(f.captured, {
+      transportKind: 'ISOLATED_LIVE_ACCEPTANCE',
+      liveCapable: true,
+    });
+    const grant = {
+      acceptanceId: 'isolated-image-acceptance-1',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      sourceContentHash: f.input.sourceContentHash,
+      credentialFingerprint: f.captured.credentialFingerprint,
+      authorize: vi.fn(async () => {}),
+    };
+    await expect(executeImageObservation(f.input, f.options)).rejects.toThrow();
+    expect(f.generateImage).not.toHaveBeenCalled();
+    const result = await executeImageObservation(f.input, {
+      ...f.options,
+      runtimeProfile: 'runtime-test',
+      liveAcceptance: grant,
+    });
+    expect(result).toMatchObject({
+      state: 'OUTPUT_STORED',
+      transportKind: 'ISOLATED_LIVE_ACCEPTANCE',
+      acceptanceId: grant.acceptanceId,
+    });
+    expect(grant.authorize).toHaveBeenCalledTimes(2);
+    expect(f.generateImage).toHaveBeenCalledTimes(1);
+    expect(
+      await executeImageObservation(f.input, { ...f.options, liveAcceptance: grant }),
+    ).toMatchObject({ callId: result.callId, state: 'OUTPUT_STORED' });
+    expect(f.generateImage).toHaveBeenCalledTimes(1);
+    expect(f.resolver.resolve).toHaveBeenCalledTimes(2); // denied Fake capture + accepted live capture
+    await expect(executeImageObservation(f.input, f.options)).rejects.toThrow();
+    expect(f.generateImage).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['runtime-development', 'runtime-production'])(
+    'rejects live acceptance in %s before capture',
+    async (runtimeProfile) => {
+      const f = fixture();
+      await expect(
+        executeImageObservation(f.input, {
+          ...f.options,
+          runtimeProfile,
+          liveAcceptance: {
+            acceptanceId: 'isolated-image-acceptance-1',
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            sourceContentHash: f.input.sourceContentHash,
+            credentialFingerprint: f.captured.credentialFingerprint,
+            authorize: async () => {},
+          },
+        }),
+      ).rejects.toThrow('isolated runtime');
+      expect(f.resolver.resolve).not.toHaveBeenCalled();
+      expect(f.repository.activate).not.toHaveBeenCalled();
+      expect(f.generateImage).not.toHaveBeenCalled();
+    },
+  );
+
+  it('fails before credential capture for expired or source-mismatched live grants', async () => {
+    for (const mismatch of ['expired', 'hash'] as const) {
+      const f = fixture();
+      const grant = {
+        acceptanceId: 'isolated-image-acceptance-1',
+        expiresAt: new Date(Date.now() + (mismatch === 'expired' ? -1_000 : 60_000)).toISOString(),
+        sourceContentHash:
+          mismatch === 'hash' ? sha256Text('wrong-image') : f.input.sourceContentHash,
+        credentialFingerprint: f.captured.credentialFingerprint,
+        authorize: vi.fn(async () => {}),
+      };
+      await expect(
+        executeImageObservation(f.input, {
+          ...f.options,
+          runtimeProfile: 'runtime-test',
+          liveAcceptance: grant,
+        }),
+      ).rejects.toThrow();
+      expect(f.resolver.resolve).not.toHaveBeenCalled();
+      expect(f.generateImage).not.toHaveBeenCalled();
+    }
+  });
+
+  it('marks an activated live attempt unknown if the grant changes before egress', async () => {
+    const f = fixture();
+    Object.assign(f.captured, {
+      transportKind: 'ISOLATED_LIVE_ACCEPTANCE',
+      liveCapable: true,
+    });
+    let checks = 0;
+    const grant = {
+      acceptanceId: 'isolated-image-acceptance-1',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      sourceContentHash: f.input.sourceContentHash,
+      credentialFingerprint: f.captured.credentialFingerprint,
+      authorize: vi.fn(async () => {
+        checks += 1;
+        if (checks === 2) grant.expiresAt = new Date(Date.now() - 1_000).toISOString();
+      }),
+    };
+    await expect(
+      executeImageObservation(f.input, {
+        ...f.options,
+        runtimeProfile: 'runtime-test',
+        liveAcceptance: grant,
+      }),
+    ).rejects.toThrow();
+    expect(f.read()?.state).toBe('OUTCOME_UNKNOWN');
+    expect(f.generateImage).not.toHaveBeenCalled();
+  });
+
+  it('labels the separate live resolver while retaining the existing Vault capture', async () => {
+    const f = fixture();
+    const secret = new TextEncoder().encode('SYNTHETIC-CAPTURED-IMAGE-KEY');
+    const grant = {
+      acceptanceId: 'isolated-image-acceptance-1',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      sourceContentHash: f.input.sourceContentHash,
+      credentialFingerprint: sha256Text('SYNTHETIC-CAPTURED-IMAGE-KEY'),
+      authorize: vi.fn(async () => {}),
+    };
+    const resolver = createIsolatedLiveImageExecutionResolver({
+      runtimeProfile: 'runtime-test',
+      executionResolver: {
+        resolve: async () => ({ executionIdentity: f.captured.identity }),
+      } as unknown as AIProviderExecutionResolverPort,
+      vault: {
+        withCredential: async (
+          _scope: unknown,
+          callback: (bytes: Uint8Array, metadata: unknown) => Promise<unknown>,
+        ) =>
+          callback(secret, {
+            projectId: f.input.projectId,
+            providerId: 'deepseek',
+            credentialId: f.captured.identity.credentialId,
+            credentialRevision: f.captured.identity.credentialRevision,
+            lifecycleState: 'active',
+          }),
+      } as unknown as CredentialVaultPort,
+      liveHttp: vi.fn(async () => {
+        throw Error('fake-only unit transport');
+      }),
+      liveAcceptance: grant,
+    });
+    const captured = await resolver.resolve(f.input);
+    expect(captured.transportKind).toBe('ISOLATED_LIVE_ACCEPTANCE');
+    expect(captured.liveCapable).toBe(true);
+    expect(captured.credentialFingerprint).toBe(grant.credentialFingerprint);
+    captured.discardCapturedCredential?.();
+  });
   it.each([
     'success',
     'invalid-authority',

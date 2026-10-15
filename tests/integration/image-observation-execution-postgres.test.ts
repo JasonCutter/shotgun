@@ -154,6 +154,42 @@ const send = (
 describe.skipIf(!process.env.TEST_DATABASE_URL)(
   'isolated image durable execution PostgreSQL',
   () => {
+    it('persists distinct accepted-live transport authority and rejects Fake replay', async () => {
+      const f = await setup();
+      try {
+        let observed = 0;
+        const captured = fakeNativeImageExecutor(async () => {
+          observed += 1;
+        });
+        Object.assign(captured, {
+          transportKind: 'ISOLATED_LIVE_ACCEPTANCE',
+          liveCapable: true,
+        });
+        const grant = {
+          acceptanceId: 'isolated-image-pg-acceptance',
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          sourceContentHash: f.input.sourceContentHash,
+          credentialFingerprint: captured.credentialFingerprint,
+          authorize: async () => {},
+        };
+        const result = await executeImageObservation(f.input, {
+          runtimeProfile: 'runtime-test',
+          repository: f.repository,
+          resolver: { resolve: async () => captured },
+          liveAcceptance: grant,
+        });
+        expect(result.state).toBe('OUTPUT_STORED');
+        expect(observed).toBe(1);
+        expect(await f.repository.read(f.input.projectId, f.input.requestId)).toMatchObject({
+          transportKind: 'ISOLATED_LIVE_ACCEPTANCE',
+          acceptanceId: grant.acceptanceId,
+        });
+        await expect(executeImageObservation(f.input, options(f.repository))).rejects.toThrow();
+        expect(observed).toBe(1);
+      } finally {
+        await f.db.dispose();
+      }
+    });
     it('retains a known rejected native Fake response and holds it across repository restart without publication', async () => {
       const f = await setup();
       try {

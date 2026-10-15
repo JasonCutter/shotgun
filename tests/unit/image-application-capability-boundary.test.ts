@@ -21,6 +21,7 @@ describe('image capability cannot start through production or nonisolated applic
         environment: {},
         stagingSecret: 'FAKE-TEST-STAGING-SECRET-32-CHARS',
         imageObservationIsolatedLive: {
+          baseUrl: 'https://api.deepseek.com/v1',
           acceptance: acceptance(),
           http: async () => {
             throw Error('must not dispatch');
@@ -36,6 +37,7 @@ describe('image capability cannot start through production or nonisolated applic
       environment: {},
       stagingSecret: 'FAKE-TEST-STAGING-SECRET-32-CHARS',
       imageObservationIsolatedLive: {
+        baseUrl: 'https://api.deepseek.com/v1',
         acceptance: { ...acceptance(), expiresAt: '2000-01-01T00:00:00.000Z' },
         http: async () => {
           throw Error('must not dispatch');
@@ -51,6 +53,24 @@ describe('image capability cannot start through production or nonisolated applic
         },
       }),
     ).rejects.toThrow('explicit grant and isolated');
+  });
+  it('rejects a missing or foreign live endpoint before connection', async () => {
+    for (const baseUrl of [undefined, 'https://unapproved.invalid'])
+      await expect(
+        startShotgunApplication({
+          environmentProfile: 'runtime-test',
+          databaseUrl: 'postgres://test:test@127.0.0.1:55432/shotgun_test_iso_unit',
+          environment: {},
+          stagingSecret: 'FAKE-TEST-STAGING-SECRET-32-CHARS',
+          imageObservationIsolatedLive: {
+            acceptance: acceptance(),
+            http: async () => {
+              throw Error('must not dispatch');
+            },
+            baseUrl: baseUrl as string,
+          },
+        }),
+      ).rejects.toThrow('explicit pinned provider base URL');
   });
   it.each([
     {

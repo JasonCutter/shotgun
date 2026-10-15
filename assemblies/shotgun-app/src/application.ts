@@ -293,6 +293,7 @@ export type StartShotgunApplicationOptions = {
   readonly imageObservationIsolatedLive?: {
     readonly acceptance: IsolatedImageLiveAcceptance;
     readonly http: NonNullable<DeepSeekConnectivityAdapterOptions['fetch']>;
+    readonly baseUrl: string;
   };
   /** Override HOST (defaults to the `HOST` env or `127.0.0.1`). */
   readonly host?: string;
@@ -446,6 +447,7 @@ export const startShotgunApplication = async (
   const recoveryHarness = environmentProfile === 'recovery';
   const imageFakeHttp = options.imageObservationFakeHttp;
   const imageLiveHttp = options.imageObservationIsolatedLive?.http;
+  const imageLiveBaseUrl = options.imageObservationIsolatedLive?.baseUrl;
   const imageLiveAcceptance = options.imageObservationIsolatedLive?.acceptance
     ? Object.freeze({ ...options.imageObservationIsolatedLive.acceptance })
     : undefined;
@@ -476,6 +478,12 @@ export const startShotgunApplication = async (
       Date.parse(imageLiveAcceptance.expiresAt) <= Date.now())
   )
     throw new Error('Live image acceptance grant is invalid or expired.');
+  if (
+    imageLiveAcceptance &&
+    (typeof imageLiveBaseUrl !== 'string' ||
+      !/^https:\/\/api\.deepseek\.com(?:\/v1)?\/?$/u.test(imageLiveBaseUrl))
+  )
+    throw new Error('Live image acceptance requires its explicit pinned provider base URL.');
 
   const cleanupStack = new AsyncCleanupStack();
   const pool = createPostgresPool(databaseUrl);
@@ -623,6 +631,7 @@ export const startShotgunApplication = async (
                       vault: credentialVault,
                       liveHttp: imageLiveHttp,
                       liveAcceptance: imageLiveAcceptance,
+                      baseUrl: imageLiveBaseUrl!,
                     }).resolve(snapshot)
                   : createIsolatedFakeImageExecutionResolver({
                       runtimeProfile: environmentProfile,

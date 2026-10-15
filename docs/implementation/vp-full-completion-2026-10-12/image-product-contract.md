@@ -33,10 +33,10 @@ callback before capture and again before egress. The same captured Vault secret,
 configuration and model are used. Fake and live injections are mutually exclusive.
 Normal runtime profiles reject this option; normal image capability remains OFF.
 
-The existing execution `record_json` records `ISOLATED_LIVE_ACCEPTANCE` and the
-acceptance ID. Legacy records without a transport label remain Fake. Cross-kind
-replay fails closed. No migration, new budget authority or relation budget claim
-is added for image/Ask. An external acceptance transport guard enforces the
+The execution `record_json` records `ISOLATED_LIVE_ACCEPTANCE` and the acceptance
+ID. Legacy records without a transport label remain Fake. Cross-kind replay
+fails closed. No new budget authority or relation budget claim is added for
+image/Ask. An external acceptance transport guard enforces the
 remaining two calls, exact image bytes, ordered image/Ask roles, durable receipts,
 and no automatic replay. The existing persistent relation authority is checked,
 without representing an image call as VP_RELATION.
@@ -49,6 +49,28 @@ continue to apply. No new package/runtime is adopted. Rollback removes only this
 explicit local option; historical execution identity remains readable. Operating
 migrations/configuration, workers and app remain unchanged. This diagnostic
 acceptance cannot certify visual semantics or reference Gold.
+
+#### Pre-egress findings and correction history
+
+The first local implementation planned JSON-only transport metadata without a
+migration. The isolated attempt exposed the older SQL `execution_mode` default
+and CHECK as Fake-only, so JSON-only identity is insufficient. Migration139 now
+allows the explicit live kind and constrains its equality to JSON plus a
+nonempty acceptance ID. The repository writes both identities and rejects
+read disagreement. Historical rows are never relabeled. Migration134 is unchanged;
+an unupgraded database rejects live insertion before egress. Migration139 has only
+been exercised in isolated tests, with no operating migration authorized.
+Rollback to Fake-only is permitted only when no live rows exist; otherwise retain
+the additive schema and historical identity while removing the runtime option.
+
+The native image assembly also requires an explicit captured provider base URL.
+The configured `/v1/chat/completions` endpoint must not become the adapter's
+default `/chat/completions`. Missing or foreign endpoints fail before connection.
+The acceptance harness omitted its isolated `local-owner` runtime binding on the
+first attempt (403), then encountered the endpoint guard (503/UNKNOWN). Both runs
+made zero provider calls. The latter durable UNKNOWN remains preserved; no paid
+outcome is replayed. The existing sealed UNKNOWN and seven text responses remain
+unchanged. The live image/Ask acceptance remains incomplete.
 
 - VP Ledger owns typed, append-only `GENERATED_UNVERIFIED` image observations.
   These are neither original Evidence quotes nor certified Facts or Claims.

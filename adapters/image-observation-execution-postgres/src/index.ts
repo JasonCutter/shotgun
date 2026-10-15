@@ -11,6 +11,7 @@ import type {
 import { imageObservationTransformationIdentity } from '../../../modules/image-observation-execution/src/index.js';
 
 type Row = {
+  execution_mode: 'ISOLATED_FAKE' | 'ISOLATED_LIVE_ACCEPTANCE';
   record_json: ImageObservationExecutionRecord;
   state: ImageObservationExecutionState;
   attempt_id: string | null;
@@ -18,17 +19,21 @@ type Row = {
   rejected_response_json: ImageObservationRejectedResponseAudit | null;
   transformation_revision_id: string | null;
 };
-const fromRow = (row: Row): ImageObservationExecutionRecord => ({
-  ...row.record_json,
-  transportKind: row.record_json.transportKind ?? 'ISOLATED_FAKE',
-  state: row.state,
-  ...(row.attempt_id === null ? {} : { attemptId: row.attempt_id }),
-  ...(row.output_json === null ? {} : { output: row.output_json }),
-  ...(row.rejected_response_json == null ? {} : { rejectedResponse: row.rejected_response_json }),
-  ...(row.transformation_revision_id === null
-    ? {}
-    : { transformationRevisionId: row.transformation_revision_id }),
-});
+const fromRow = (row: Row): ImageObservationExecutionRecord => {
+  if (row.execution_mode !== (row.record_json.transportKind ?? 'ISOLATED_FAKE'))
+    invalid('Image SQL and JSON transport identities disagree');
+  return {
+    ...row.record_json,
+    transportKind: row.record_json.transportKind ?? 'ISOLATED_FAKE',
+    state: row.state,
+    ...(row.attempt_id === null ? {} : { attemptId: row.attempt_id }),
+    ...(row.output_json === null ? {} : { output: row.output_json }),
+    ...(row.rejected_response_json == null ? {} : { rejectedResponse: row.rejected_response_json }),
+    ...(row.transformation_revision_id === null
+      ? {}
+      : { transformationRevisionId: row.transformation_revision_id }),
+  };
+};
 const invalid: (message: string) => never = (message) => {
   throw new ShotgunError({
     code: 'VALIDATION_ERROR',
@@ -72,8 +77,8 @@ export class PostgresImageObservationExecutionRepository implements ImageObserva
     const snapshot = record.snapshot;
     await this.pool.query(
       `INSERT INTO ai.image_observation_executions
-      (call_id,project_id,request_id,source_version_id,state,request_digest,record_json,created_at)
-      SELECT $1,$2,$3,$4,'REQUESTED',$5,$6::jsonb,$7::timestamptz
+      (call_id,project_id,request_id,source_version_id,state,request_digest,record_json,created_at,execution_mode)
+      SELECT $1,$2,$3,$4,'REQUESTED',$5,$6::jsonb,$7::timestamptz,$14
       WHERE EXISTS (SELECT 1 FROM asset.source_versions version
         JOIN asset.sources source ON source.source_id=version.source_id
         JOIN asset.original_assets original ON original.asset_id=version.original_asset_id
@@ -96,6 +101,7 @@ export class PostgresImageObservationExecutionRepository implements ImageObserva
         snapshot.image.mediaType,
         snapshot.accessScope,
         snapshot.sensitivity,
+        record.transportKind,
       ],
     );
     const existing = await this.read(snapshot.projectId, snapshot.requestId);

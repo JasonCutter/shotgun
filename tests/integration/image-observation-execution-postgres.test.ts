@@ -18,7 +18,7 @@ import {
   imageExecutionFixtureInput,
 } from '../helpers/image-observation-execution-fixture.js';
 
-async function setup() {
+async function setup(liveTransport = false) {
   // Real PostgreSQL test of migration134 and its exact AI execution boundary.
   // Existing SourceVersion/revision columns are minimized here; the actual app
   // integration separately verifies the full Canonical migrations and ACL.
@@ -41,6 +41,16 @@ async function setup() {
         'utf8',
       ),
     );
+    if (liveTransport)
+      await pool.query(
+        await readFile(
+          new URL(
+            '../../db/migrations/139_isolated_image_live_transport_identity.sql',
+            import.meta.url,
+          ),
+          'utf8',
+        ),
+      );
     const input = imageExecutionFixtureInput();
     await pool.query('INSERT INTO asset.original_assets VALUES($1,$2)', [
       input.originalAssetId,
@@ -154,8 +164,80 @@ const send = (
 describe.skipIf(!process.env.TEST_DATABASE_URL)(
   'isolated image durable execution PostgreSQL',
   () => {
-    it('persists distinct accepted-live transport authority and rejects Fake replay', async () => {
+    it('preserves legacy Fake rows through transport migration and rejects live egress before upgrade', async () => {
       const f = await setup();
+      try {
+        const original = await executeImageObservation(f.input, options(f.repository));
+        // Pre-extension rows have only the SQL Fake mode, without JSON kind.
+        await f.pool.query(
+          "UPDATE ai.image_observation_executions SET record_json=record_json-'transportKind' WHERE call_id=$1",
+          [original.callId],
+        );
+        const before = (
+          await f.pool.query(
+            'SELECT to_jsonb(t) AS row FROM ai.image_observation_executions t WHERE call_id=$1',
+            [original.callId],
+          )
+        ).rows[0];
+        let calls = 0;
+        const captured = fakeNativeImageExecutor(async () => {
+          calls++;
+        });
+        Object.assign(captured, { transportKind: 'ISOLATED_LIVE_ACCEPTANCE', liveCapable: true });
+        await expect(
+          executeImageObservation(
+            { ...f.input, requestId: randomUUID() },
+            {
+              runtimeProfile: 'runtime-test',
+              repository: f.repository,
+              resolver: { resolve: async () => captured },
+              liveAcceptance: {
+                acceptanceId: 'unupgraded-schema-proof',
+                expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                sourceContentHash: f.input.sourceContentHash,
+                credentialFingerprint: captured.credentialFingerprint,
+                authorize: async () => {},
+              },
+            },
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+        expect(calls).toBe(0);
+        const migration = await readFile(
+          new URL(
+            '../../db/migrations/139_isolated_image_live_transport_identity.sql',
+            import.meta.url,
+          ),
+          'utf8',
+        );
+        await f.pool.query('BEGIN');
+        await f.pool.query(migration);
+        expect(
+          (
+            await f.pool.query(
+              'SELECT to_jsonb(t) AS row FROM ai.image_observation_executions t WHERE call_id=$1',
+              [original.callId],
+            )
+          ).rows[0],
+        ).toEqual(before);
+        await f.pool.query('ROLLBACK');
+        await f.pool.query(migration);
+        expect(
+          (
+            await f.pool.query(
+              'SELECT to_jsonb(t) AS row FROM ai.image_observation_executions t WHERE call_id=$1',
+              [original.callId],
+            )
+          ).rows[0],
+        ).toEqual(before);
+        expect((await executeImageObservation(f.input, options(f.repository))).callId).toBe(
+          original.callId,
+        );
+      } finally {
+        await f.db.dispose();
+      }
+    });
+    it('persists distinct accepted-live transport authority and rejects Fake replay', async () => {
+      const f = await setup(true);
       try {
         let observed = 0;
         const captured = fakeNativeImageExecutor(async () => {
@@ -179,6 +261,20 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
           liveAcceptance: grant,
         });
         expect(result.state).toBe('OUTPUT_STORED');
+        expect(
+          (
+            await f.pool.query(
+              'SELECT execution_mode FROM ai.image_observation_executions WHERE call_id=$1',
+              [result.callId],
+            )
+          ).rows[0]?.execution_mode,
+        ).toBe('ISOLATED_LIVE_ACCEPTANCE');
+        await expect(
+          f.pool.query(
+            "UPDATE ai.image_observation_executions SET execution_mode='ISOLATED_FAKE' WHERE call_id=$1",
+            [result.callId],
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
         expect(observed).toBe(1);
         expect(await f.repository.read(f.input.projectId, f.input.requestId)).toMatchObject({
           transportKind: 'ISOLATED_LIVE_ACCEPTANCE',

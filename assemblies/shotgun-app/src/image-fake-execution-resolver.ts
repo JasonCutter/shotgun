@@ -43,13 +43,14 @@ export function createIsolatedLiveImageExecutionResolver(options: {
   readonly vault: CredentialVaultPort;
   readonly liveHttp: NonNullable<DeepSeekConnectivityAdapterOptions['fetch']>;
   readonly liveAcceptance: IsolatedImageLiveAcceptance;
-  readonly baseUrl?: string;
+  readonly baseUrl: string;
 }): ImageObservationExecutionResolverPort {
   if (
     options.runtimeProfile !== 'runtime-test' ||
     typeof options.liveHttp !== 'function' ||
     !options.liveAcceptance ||
-    typeof options.liveAcceptance.authorize !== 'function'
+    typeof options.liveAcceptance.authorize !== 'function' ||
+    !/^https:\/\/api\.deepseek\.com(?:\/v1)?\/?$/u.test(options.baseUrl)
   )
     throw new Error('ISOLATED_LIVE_IMAGE_ACCEPTANCE_REQUIRED');
   return createCapturedImageExecutionResolver({

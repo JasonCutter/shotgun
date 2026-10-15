@@ -207,7 +207,7 @@ describe('isolated image execution durable ordering', () => {
     expect(f.generateImage).not.toHaveBeenCalled();
   });
 
-  it('labels the separate live resolver while retaining the existing Vault capture', async () => {
+  it('pins the explicit v1 endpoint and live identity while retaining Vault capture', async () => {
     const f = fixture();
     const secret = new TextEncoder().encode('SYNTHETIC-CAPTURED-IMAGE-KEY');
     const grant = {
@@ -219,6 +219,7 @@ describe('isolated image execution durable ordering', () => {
     };
     const resolver = createIsolatedLiveImageExecutionResolver({
       runtimeProfile: 'runtime-test',
+      baseUrl: 'https://api.deepseek.com/v1',
       executionResolver: {
         resolve: async () => ({ executionIdentity: f.captured.identity }),
       } as unknown as AIProviderExecutionResolverPort,
@@ -235,8 +236,16 @@ describe('isolated image execution durable ordering', () => {
             lifecycleState: 'active',
           }),
       } as unknown as CredentialVaultPort,
-      liveHttp: vi.fn(async () => {
-        throw Error('fake-only unit transport');
+      liveHttp: vi.fn(async (url) => {
+        expect(String(url)).toBe('https://api.deepseek.com/v1/chat/completions');
+        return new Response(
+          JSON.stringify({
+            id: 'synthetic-image-endpoint-proof',
+            model: 'deepseek-flash',
+            choices: [{ message: { content: '{"observationText":"Authored offline image"}' } }],
+          }),
+          { status: 200 },
+        );
       }),
       liveAcceptance: grant,
     });
@@ -244,6 +253,15 @@ describe('isolated image execution durable ordering', () => {
     expect(captured.transportKind).toBe('ISOLATED_LIVE_ACCEPTANCE');
     expect(captured.liveCapable).toBe(true);
     expect(captured.credentialFingerprint).toBe(grant.credentialFingerprint);
+    await captured.generateImage({
+      systemInstruction: 'Synthetic offline request',
+      prompt: 'Synthetic offline image',
+      responseSchema: { type: 'object' },
+      maxOutputTokens: 10,
+      imageBytes: f.input.imageBytes,
+      mediaType: f.input.image.mediaType,
+      expectedContentHash: f.input.sourceContentHash,
+    });
     captured.discardCapturedCredential?.();
   });
   it.each([

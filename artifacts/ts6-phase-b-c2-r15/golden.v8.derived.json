@@ -3,14 +3,14 @@
   "baseSha": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
   "derivedFrom": {
     "parentArtifact": "artifacts/ts6-phase-b-c2-r15/approved-regression-relations.v8.json",
-    "parentSha256": "06996a827d64b9e6206248a38e35e7930190399cde8e0e2c9fcd219f9364a8e8",
+    "parentSha256": "03e94ae0142c8ee372476be6552f97c9225883858b3c89f22a99a7deaa084d3e",
     "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
     "authorityVersion": "ts6.phase-b.current-authority-manifest.v8"
   },
   "correctionRound": "T3-1-V8-FRESH-AST-AND-APPROVED-RELATION-AUTHORITY",
   "transactionBoundaries": [
     {
-      "boundaryId": "raw:adapters/postgres-stage4/src/index.ts:574",
+      "boundaryId": "raw:adapters/postgres-stage4/src/index.ts:580",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "acceptOutput",
@@ -40,7 +40,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 1041,
+            "line": 1057,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -55,7 +55,7 @@
       ]
     },
     {
-      "boundaryId": "raw:adapters/postgres-stage4/src/index.ts:735",
+      "boundaryId": "raw:adapters/postgres-stage4/src/index.ts:741",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "markAttemptOutcomeUnknown",
@@ -85,7 +85,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 597,
+            "line": 601,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -103,7 +103,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 956,
+            "line": 906,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -121,12 +121,30 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 1049,
+            "line": 972,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/ai-provider/src/index.ts",
+            "symbol": "repository.markAttemptOutcomeUnknown",
+            "callExpression": "repository.markAttemptOutcomeUnknown(...)",
+            "callNeedle": "repository.markAttemptOutcomeUnknown(",
+            "bindingEvidence": [
+              "async markAttemptOutcomeUnknown("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 4 provider outcome-unknown: exact retry returns the same safe durable state"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "AIProviderCallRepositoryPort",
+            "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
+            "receiverType": "AIProviderCallRepositoryPort",
+            "line": 1065,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 3,
+      "legacyRecordedCallers": 4,
       "ackLossPolicy": {
         "kind": "OTHER_EXISTING_POLICY",
         "evidence": "existing manual transaction code"
@@ -9706,7 +9724,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:346",
+      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:347",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "ensure",
@@ -9736,7 +9754,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 784,
+            "line": 788,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9751,7 +9769,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:440",
+      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:441",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "claimNextAttempt",
@@ -9781,7 +9799,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 868,
+            "line": 872,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9796,7 +9814,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:504",
+      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:510",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "storeOutput",
@@ -9826,7 +9844,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 950,
+            "line": 966,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9841,7 +9859,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:699",
+      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:705",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "failAttempt",
@@ -9871,7 +9889,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 900,
+            "line": 916,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -9889,7 +9907,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 994,
+            "line": 1010,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9904,7 +9922,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:846",
+      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:852",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresCandidateRepository",
       "method": "saveBatch",
@@ -12752,39 +12770,39 @@
   "transactionDelegates": [],
   "excludedCandidates": [
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:643",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:649",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresAIProviderCallRepository",
       "reason": "DUPLICATE",
-      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/postgres-stage4/src/index.ts:574."
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/postgres-stage4/src/index.ts:580."
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:682",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:688",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresAIProviderCallRepository",
       "reason": "DUPLICATE",
-      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/postgres-stage4/src/index.ts:574."
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/postgres-stage4/src/index.ts:580."
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:686",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:692",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresAIProviderCallRepository",
       "reason": "DUPLICATE",
-      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/postgres-stage4/src/index.ts:574."
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/postgres-stage4/src/index.ts:580."
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:759",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:765",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresAIProviderCallRepository",
       "reason": "DUPLICATE",
-      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/postgres-stage4/src/index.ts:735."
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/postgres-stage4/src/index.ts:741."
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:763",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:769",
       "file": "adapters/postgres-stage4/src/index.ts",
       "symbol": "PostgresAIProviderCallRepository",
       "reason": "DUPLICATE",
-      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/postgres-stage4/src/index.ts:735."
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/postgres-stage4/src/index.ts:741."
     },
     {
       "candidateId": "raw:adapters/semantic-corpus-postgres/src/index.ts:156",
@@ -12852,7 +12870,7 @@
   ],
   "candidateReconciliation": [
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:574",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:580",
       "c2r1Classification": "RAW",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -12862,10 +12880,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:574"
+      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:580"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:643",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:649",
       "c2r1Classification": "RAW",
       "c2r2Classification": "NON_TX",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -12875,10 +12893,10 @@
       "productionReachable": true,
       "transactionOwner": false,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:574"
+      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:580"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:682",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:688",
       "c2r1Classification": "RAW",
       "c2r2Classification": "NON_TX",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -12888,10 +12906,10 @@
       "productionReachable": true,
       "transactionOwner": false,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:574"
+      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:580"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:686",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:692",
       "c2r1Classification": "RAW",
       "c2r2Classification": "NON_TX",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -12901,10 +12919,10 @@
       "productionReachable": true,
       "transactionOwner": false,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:574"
+      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:580"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:735",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:741",
       "c2r1Classification": "RAW",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -12914,10 +12932,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:735"
+      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:741"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:759",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:765",
       "c2r1Classification": "RAW",
       "c2r2Classification": "NON_TX",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -12927,10 +12945,10 @@
       "productionReachable": true,
       "transactionOwner": false,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:735"
+      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:741"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:763",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:769",
       "c2r1Classification": "RAW",
       "c2r2Classification": "NON_TX",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -12940,7 +12958,7 @@
       "productionReachable": true,
       "transactionOwner": false,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:735"
+      "canonicalBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:741"
     },
     {
       "candidateId": "raw:adapters/semantic-corpus-postgres/src/index.ts:151",
@@ -14139,7 +14157,7 @@
       "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:995"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:346",
+      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:347",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -14149,10 +14167,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:346"
+      "canonicalBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:347"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:440",
+      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:441",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -14162,10 +14180,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:440"
+      "canonicalBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:441"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:504",
+      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:510",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -14175,10 +14193,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:504"
+      "canonicalBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:510"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:699",
+      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:705",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -14188,10 +14206,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:699"
+      "canonicalBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:705"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:846",
+      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:852",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres-stage4/src/index.ts",
@@ -14201,7 +14219,7 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:846"
+      "canonicalBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:852"
     },
     {
       "candidateId": "safe:adapters/postgres-stage5/src/index.ts:1239",
@@ -15355,10 +15373,10 @@
       "functionKey": "adapters/frontend-ask-execution-postgres/src/index.ts:PostgresAskAnswerExecutionRepository.<anonymous-function>"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:574",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:580",
       "kind": "RAW",
       "file": "adapters/postgres-stage4/src/index.ts",
-      "line": 574,
+      "line": 580,
       "sourceNeedle": "await client.query('BEGIN');",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "acceptOutput",
@@ -15366,10 +15384,10 @@
       "functionKey": "adapters/postgres-stage4/src/index.ts:PostgresAIProviderCallRepository.acceptOutput"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:643",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:649",
       "kind": "RAW",
       "file": "adapters/postgres-stage4/src/index.ts",
-      "line": 643,
+      "line": 649,
       "sourceNeedle": "await client.query('COMMIT');",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "acceptOutput",
@@ -15377,10 +15395,10 @@
       "functionKey": "adapters/postgres-stage4/src/index.ts:PostgresAIProviderCallRepository.acceptOutput"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:682",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:688",
       "kind": "RAW",
       "file": "adapters/postgres-stage4/src/index.ts",
-      "line": 682,
+      "line": 688,
       "sourceNeedle": "await client.query('COMMIT');",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "acceptOutput",
@@ -15388,10 +15406,10 @@
       "functionKey": "adapters/postgres-stage4/src/index.ts:PostgresAIProviderCallRepository.acceptOutput"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:686",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:692",
       "kind": "RAW",
       "file": "adapters/postgres-stage4/src/index.ts",
-      "line": 686,
+      "line": 692,
       "sourceNeedle": "await client.query('ROLLBACK');",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "acceptOutput",
@@ -15399,10 +15417,10 @@
       "functionKey": "adapters/postgres-stage4/src/index.ts:PostgresAIProviderCallRepository.acceptOutput"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:735",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:741",
       "kind": "RAW",
       "file": "adapters/postgres-stage4/src/index.ts",
-      "line": 735,
+      "line": 741,
       "sourceNeedle": "await client.query('BEGIN');",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "markAttemptOutcomeUnknown",
@@ -15410,10 +15428,10 @@
       "functionKey": "adapters/postgres-stage4/src/index.ts:PostgresAIProviderCallRepository.markAttemptOutcomeUnknown"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:759",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:765",
       "kind": "RAW",
       "file": "adapters/postgres-stage4/src/index.ts",
-      "line": 759,
+      "line": 765,
       "sourceNeedle": "await client.query('COMMIT');",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "markAttemptOutcomeUnknown",
@@ -15421,10 +15439,10 @@
       "functionKey": "adapters/postgres-stage4/src/index.ts:PostgresAIProviderCallRepository.markAttemptOutcomeUnknown"
     },
     {
-      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:763",
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:769",
       "kind": "RAW",
       "file": "adapters/postgres-stage4/src/index.ts",
-      "line": 763,
+      "line": 769,
       "sourceNeedle": "await client.query('ROLLBACK');",
       "symbol": "PostgresAIProviderCallRepository",
       "method": "markAttemptOutcomeUnknown",
@@ -15581,8 +15599,8 @@
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 4 provider output acceptance: exact retry is idempotent after durable acceptance",
       "covers": [
-        "raw:adapters/postgres-stage4/src/index.ts:574",
-        "safe:adapters/postgres-stage4/src/index.ts:504"
+        "raw:adapters/postgres-stage4/src/index.ts:580",
+        "safe:adapters/postgres-stage4/src/index.ts:510"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAIProviderCallRepository.acceptOutput",
@@ -15595,7 +15613,7 @@
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 4 provider outcome-unknown: exact retry returns the same safe durable state",
       "covers": [
-        "raw:adapters/postgres-stage4/src/index.ts:735"
+        "raw:adapters/postgres-stage4/src/index.ts:741"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAIProviderCallRepository.markAttemptOutcomeUnknown",
@@ -16077,7 +16095,7 @@
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 4 ensure: exact retry converges to the committed provider call",
       "covers": [
-        "safe:adapters/postgres-stage4/src/index.ts:346"
+        "safe:adapters/postgres-stage4/src/index.ts:347"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAIProviderCallRepository.ensure",
@@ -16090,7 +16108,7 @@
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 4 provider claim: reconciles a committed attempt after ACK loss",
       "covers": [
-        "safe:adapters/postgres-stage4/src/index.ts:440"
+        "safe:adapters/postgres-stage4/src/index.ts:441"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAIProviderCallRepository.claimNextAttempt",
@@ -16103,7 +16121,7 @@
       "file": "tests/database/stage-4-postgres.test.ts",
       "testName": "does not reclaim terminal failures after restart, but preserves retryable reclaim",
       "covers": [
-        "safe:adapters/postgres-stage4/src/index.ts:699"
+        "safe:adapters/postgres-stage4/src/index.ts:705"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAIProviderCallRepository.failAttempt",
@@ -16116,7 +16134,7 @@
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 4 candidate batch persistence: exact retry converges without duplicate candidates",
       "covers": [
-        "safe:adapters/postgres-stage4/src/index.ts:846"
+        "safe:adapters/postgres-stage4/src/index.ts:852"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresCandidateRepository.saveBatch",

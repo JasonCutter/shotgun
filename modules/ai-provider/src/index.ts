@@ -183,6 +183,10 @@ export type AIProviderModuleOptions = {
 
 export const DEFAULT_DEEPSEEK_CANDIDATE_MAX_OUTPUT_TOKENS = 16_384;
 export const DEFAULT_CANDIDATE_EXTRACTION_TIMEOUT_MS = 15 * 60_000;
+// Allow the bounded generation deadline plus a short window to persist and
+// accept its response before startup recovery can expire the attempt.
+export const DEFAULT_CANDIDATE_PROVIDER_ATTEMPT_LEASE_MS =
+  DEFAULT_CANDIDATE_EXTRACTION_TIMEOUT_MS + 60_000;
 export const DEFAULT_CANDIDATE_PROMPT_VERSION = 'direct-claim-v10';
 
 type GenerateStructuredPayload = {
@@ -897,6 +901,18 @@ export const createAIProviderModule = (
                 correlationId: envelope.correlationId,
                 retryable: false,
               });
+              if (lastError.code === 'OUTCOME_UNKNOWN') {
+                try {
+                  await repository.markAttemptOutcomeUnknown(
+                    projectId,
+                    payload.requestId,
+                    claimed.attempt.attemptId,
+                  );
+                } catch {
+                  // The durable running claim still fences an automatic recall.
+                }
+                throw lastError;
+              }
               record = await repository.failAttempt(
                 projectId,
                 payload.requestId,

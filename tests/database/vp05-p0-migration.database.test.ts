@@ -164,7 +164,7 @@ it('upgrades main 128 additively, preserves a historical receipt, and resets an 
     await migrateUpTo(undefined, db.databaseUrl);
     expect(
       (await pool.query('SELECT count(*)::int AS n FROM runtime.schema_migrations')).rows[0].n,
-    ).toBe(before + 10);
+    ).toBe(before + 11);
     expect(
       (
         await pool.query(
@@ -179,6 +179,7 @@ it('upgrades main 128 additively, preserves a historical receipt, and resets an 
       { name: '136_source_image_observation_readiness.sql' },
       { name: '137_image_observation_t3_ownership.sql' },
       { name: '138_image_ask_t3_erasure.sql' },
+      { name: '139_isolated_image_live_transport_identity.sql' },
     ]);
     expect(
       (

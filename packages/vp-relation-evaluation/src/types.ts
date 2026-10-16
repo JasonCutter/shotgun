@@ -4,6 +4,7 @@ export const RELATION_MEASUREMENT_VERSION = 'VP05_RELATION_MEASUREMENT_0.2' as c
 export const RELATION_TARGET_REVISIONS = {
   V6: 'vp-deepseek-relation-v6-evidence-context',
   V11: 'vp-deepseek-relation-v11-contractual-protocol-and-physical-generalization',
+  V6_EXPLICIT_NEGATIVE_ISOLATED: 'vp-relation-v6-explicit-negative-isolated-v1',
 } as const;
 export type RelationTarget = keyof typeof RELATION_TARGET_REVISIONS;
 export type RelationChoice =

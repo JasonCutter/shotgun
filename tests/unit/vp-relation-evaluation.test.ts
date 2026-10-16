@@ -805,4 +805,47 @@ describe('VP relation measurement synthetic contract only', () => {
     expect(report.raw.bounds.criticalRecall).toEqual({ lower: 1, upper: 1 });
     expect(report.raw.assessment.unresolvedWarrants).toBe(1);
   });
+  it('scores explicit absence only under the distinct isolated policy and never as abstention', () => {
+    const original = reference('isolated-negative', [negative]);
+    const entry = seal({
+      ...original,
+      critical: false,
+      input: {
+        ...original.input,
+        target: 'V6_EXPLICIT_NEGATIVE_ISOLATED',
+        policyRevision: RELATION_TARGET_REVISIONS.V6_EXPLICIT_NEGATIVE_ISOLATED,
+      },
+    });
+    const report = evaluateRelationObservations(plan([entry]), [observation(entry, negative)]);
+    expect(report.target).toBe('V6_EXPLICIT_NEGATIVE_ISOLATED');
+    expect(report.explicitNegativeCorrectness).toEqual({ numerator: 1, denominator: 1, value: 1 });
+    expect(report.raw.recall.value).toBeNull();
+    const abstention = evaluateRelationObservations(plan([entry]), [
+      observation(entry, unresolved),
+    ]);
+    expect(abstention.explicitNegativeCorrectness.value).toBe(0);
+    expect(abstention.modelAbstentionRate.value).toBe(1);
+    expect(() => validateRelationEvaluation(plan([original]), [])).toThrow('not in V6');
+  });
+  it('does not reuse the v6 policy identity for isolated seven-choice references', () => {
+    const entry = seal({
+      ...reference(),
+      input: { ...reference().input, target: 'V6_EXPLICIT_NEGATIVE_ISOLATED' },
+    });
+    expect(() => validateRelationEvaluation(plan([entry]), [])).toThrow('policy revision mismatch');
+  });
+  it.each(['different-year', 'different-entity', 'same-number-different-measure'])(
+    'rejects a directionless QUALIFIES import shaped like audited case %s without repairing old labels',
+    (caseId) => {
+      // Synthetic malformed import, not a modification or regrade of the historical case.
+      const malformed = reference(`synthetic-import-${caseId}`, [
+        {
+          ...supports,
+          choice: 'QUALIFIES',
+          direction: 'NONE',
+        },
+      ]);
+      expect(() => validateRelationEvaluation(plan([malformed]), [])).toThrow('invalid direction');
+    },
+  );
 });

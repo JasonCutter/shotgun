@@ -286,3 +286,9 @@ Docker 엔진 unavailable이므로 DB/앱·worker는 시작하지 않았다. 청
 NO_RELATION 및 제품 인수 Gate는 별도 미채택 정책 초안이며 v6/0.9·A1 인증·
 생산 코드/DB/권위·실제 provider 호출은 그대로다. 게시·merge와 운영 승인을
 자동 확장하지 않는다. 이 로컬 보완으로 전체 VP 최종 인수를 선언하지 않는다.
+
+후속 사용자가 두 정책 보완의 격리 구현·계약 정비를 명시 승인했다.
+[새 negative 격리 계약](./explicit-negative-isolated-2026-10-16.md)은7종 schema와
+negative/abstention/withheld를 분리하고 live/production execution을 거부한다.
+인증 Gold는 기존 요건을 유지하며 제품 인수와 보장 범위를 분리했다. 운영
+v6/0.9를 바꾸지 않고 실제 AI·과거 재채점·운영 DB/worker·Git 게시를 수행하지 않는다.

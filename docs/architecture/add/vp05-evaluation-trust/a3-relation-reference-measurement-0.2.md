@@ -57,7 +57,7 @@ full-tuple `conditionalDirectionAccuracy`는 기존과 같이 kind와 warrant가
 - package는 원래처럼 offline-only다. 신규 reference, source schema, reviewer DB, approval service, production worker import 또는 provider 호출을 추가하지 않는다.
 - 기존 Shotgun `ratio`, stable digest, A1/A2 validation 및 unit fixture를 AUGMENT한다. 원래 [OSS 검토/고정 commit/license 결정](../../../implementation/vp-full-completion-2026-10-12/evaluation-a3-implementation.md)을 재사용한다. gbrain/lucas/ddsyasas/OpenKnowledge의 runtime을 도입할 필요가 없는 Shotgun 소유 측정 의미의 보완이다. 새 의존성·lockfile·OSS 채택/추출 없음.
 - Source/Evidence/권한·예산·Ledger·복구 Port는 불변이다. DB migration/운영 rollout은 없다. rollback은 이 offline package·tests·후속 문서의 commit을 되돌리는 것으로 한정하며 실험 DB/claim/budget을 되돌리지 않는다.
-- `NO_RELATION` 정책 또는 제품 인수의 인간 인증 Gate 변경은 [별도 정책 검토안](./relation-negative-and-acceptance-policy-draft.md)이다. 이 측정 변경이 v11 활성화나 새 taxonomy를 승인하지 않는다.
+- 후속 사용자가 [별도 정책 결정](./relation-negative-and-acceptance-policy-draft.md)의 격리 구현과 인증/제품 인수 범위 분리를 승인했다. 오프라인 target `V6_EXPLICIT_NEGATIVE_ISOLATED`는 고유 revision을 요구하며 NO_RELATION을 허용한다. 기존 V6 target은 여전히6종이고 V11과도 별개다. 이 변경은 v11 또는 신규 정책의 운영 활성화를 승인하지 않는다.
 
 ## 6. 변경 이력
 

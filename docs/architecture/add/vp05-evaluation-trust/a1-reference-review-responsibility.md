@@ -1,5 +1,11 @@
 # VP-05 A1 — Reference 승인 책임 및 독립 검토
 
+> 2026-10-16 후속 사용자 승인: [인증과 제품 인수 범위 분리](./relation-negative-and-acceptance-policy-draft.md#5-승인된-인간-인증과-제품-인수-범위-분리)를 적용한다.
+> 아래의 외부 인간/동등 reference 요건은 **CERTIFICATION/Gold의 요건**으로 유지한다.
+> 모든 내부 관계 또는 기존72개 전부의 인간 승인을 일반 제품 인수의 일률적 선행
+> 조건으로 확대하지 않는다. AI 교차 검토·결정론적 제품 검증의 실제 범위는 별도
+> 보고하고 인증 점수와 구분한다. 사용자 개별 검토·reviewer 지정 의무는 없다.
+
 - Section decision: **CORRECTED_PER_USER_REVIEW / PUBLICATION_HOLD — 2026-10-12**
 - Record identity: `VP05-EVAL-A1-20261012`
 - Subject: Canonical `main@cd3cc258dcc5033cb61d7f1dc2f221f5e5016ab6`

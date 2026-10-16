@@ -4,8 +4,9 @@
 
 [A3 측정0.2](./a3-relation-reference-measurement-0.2.md)는 불완전 full-tuple 점수와
 종류·방향 일치, 근거 검증, 채택 누락 및 전체/적격 실행 안정성을 분리하는 신규
-오프라인 구현이다. [NO_RELATION·제품 인수 정책 검토안](./relation-negative-and-acceptance-policy-draft.md)은
-미채택 초안이며 현재 v6/0.9·A1 인증 경계 또는 운영 정책을 바꾸지 않는다.
+오프라인 구현이다. [NO_RELATION·제품 인수 정책 결정](./relation-negative-and-acceptance-policy-draft.md)은
+후속 사용자 승인으로 격리 구현과 인증/제품 인수 범위를 정비한다. 현재 운영
+v6/0.9와 A1의 인증 Gold 요건은 유지하며 실제 provider를 활성화하지 않는다.
 
 ## 2026-10-12 후속 구현 상태
 

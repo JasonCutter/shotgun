@@ -245,3 +245,17 @@ Quality·Frontend·Required Gates, PostgreSQL748 PASS/2 기존 SKIP 및 표준 T
 새 인증 Gold0·실청구 N/A·Windows 운영 설치/reboot 미실행은 그대로다. 운영
 checkout·DB·권위·설정·worker를 변경하지 않았으며 추가 provider 호출도0이다.
 **VP_FINAL_ACCEPTANCE_NOT_COMPLETE / PRODUCTION_HOLD**를 유지한다.
+
+### 2026-10-16 — 새 청구 자료와 null context 후속 대조
+
+앞 절의 실청구 N/A는 CSV 제공 전 checkpoint다. 이후 사용자 export로 10월15일
+요청9·6,916 tokens와 일별 보고 비용(Paid USD0.001501848 / Granted CNY0.00245056)을
+정확히 대조했다. 개별 response/claim 청구 귀속과 이전 가능 UNKNOWN1은 구분해
+미검증으로 유지한다. 총10회 상한 잔여0이며 추가 호출은 없다.
+
+실제 relation의 두 claim은 당시 추출 Evidence 텍스트·저장 인용과 일치하고,
+null context는 현행 동일 문장 중복 생략 규칙과 일치한다. 별도 문맥 손실 결함이
+입증되지 않아 runtime을 변경하지 않았다. Raw span DB snapshot 부재 등 제한은
+[잔여 Gate 재분류](./remaining-gates-review-2026-10-16.md)에 기록한다.
+PR390 exact head/필수 CI 성공은 유지하며 merge는 별도 승인이다. 이 후속 기록은
+로컬 변경이고 운영 설치/reboot·독립 의미 검증의 남은 조건을 대체하지 않는다.

@@ -551,17 +551,17 @@
       "reachabilityStatus": "TEST_ONLY_OR_DEAD"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage6/src/index.ts:291",
+      "candidateId": "safe:adapters/postgres-stage6/src/index.ts:295",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage6/src/index.ts:537",
+      "candidateId": "safe:adapters/postgres-stage6/src/index.ts:541",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage6/src/index.ts:788",
+      "candidateId": "safe:adapters/postgres-stage6/src/index.ts:792",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },

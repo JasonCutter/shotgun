@@ -150,6 +150,49 @@ const UTILITY_TYPES = new Set([
   'Set',
 ]);
 
+// These utilities describe a view of their first argument. An ordinary generic
+// repository or container is its own receiver type, not its payload type.
+const STRUCTURAL_TYPE_VIEWS = new Set([
+  'Pick',
+  'Omit',
+  'Readonly',
+  'Partial',
+  'Required',
+  'NonNullable',
+]);
+const annotationNamesCache = new Map<string, readonly string[]>();
+const annotationNames = (text: string): readonly string[] => {
+  const cached = annotationNamesCache.get(text);
+  if (cached) return cached;
+  const sf = ts.createSourceFile(
+    'receiver-type.ts',
+    `type __Receiver = ${text};`,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const declaration = sf.statements[0];
+  const names = (node: ts.TypeNode): string[] => {
+    if (ts.isParenthesizedTypeNode(node)) return names(node.type);
+    if (ts.isUnionTypeNode(node) || ts.isIntersectionTypeNode(node))
+      return node.types.flatMap(names);
+    if (!ts.isTypeReferenceNode(node)) return [];
+    const head = node.typeName.getText(sf).split('.').pop()!;
+    if (STRUCTURAL_TYPE_VIEWS.has(head)) {
+      const first = node.typeArguments?.[0];
+      return first ? names(first) : [];
+    }
+    return [head];
+  };
+  const result =
+    declaration && ts.isTypeAliasDeclaration(declaration)
+      ? [...new Set(names(declaration.type))]
+      : [];
+  // Cached facts depend on these exact type bytes, never a path or timestamp.
+  annotationNamesCache.set(text, result);
+  return result;
+};
+
 const posix = (v: string): string => v.split(path.sep).join('/');
 
 const productionFiles = (root: string): string[] => {
@@ -185,17 +228,13 @@ const heritageNames = (node: ts.ClassDeclaration | ts.ClassExpression): string[]
 const bareTypeName = (typeText: string | undefined): string | null => {
   if (!typeText) return null;
   const cleaned = typeText.replace(/[!?]+$/g, ' ').trim();
-  // A single generic reference names the type it is a view of:
+  // A structural utility names the type it is a view of:
   //   `Pick<SemanticCorpusSourceSnapshotReaderPort, 'readSnapshot'>`
   // is a view of `SemanticCorpusSourceSnapshotReaderPort`, which is the Port the
   // boundary implements. Treating the whole text as opaque is what made a
   // narrowed dependency look like a method-name collision.
   const generic = /^\s*(?:readonly\s+)?([A-Za-z_$][\w$]*)\s*<([\s\S]*)>\s*$/.exec(cleaned);
-  if (generic?.[1] && generic[2]) {
-    const name = bareTypeName(generic[2].split(',')[0]);
-    if (name) return name;
-    return generic[1];
-  }
+  if (generic) return annotationNames(cleaned)[0] ?? null;
   // Strip non-null/optional assertions and a trailing initialiser before matching.
   const stripped = cleaned
     .replace(/[!?]+$/g, ' ')
@@ -214,9 +253,8 @@ const bareTypeName = (typeText: string | undefined): string | null => {
  * Sources write runtime to every route, and an accessor's callee is exactly the
  * shape `bareTypeName` cannot reduce: its last alternative is `undefined`.
  * Taking the union apart keeps the real name. Intersections are split for the
- * same reason. Generic arguments are dropped — `Pick<A, 'b'>` contributes `A`,
- * and the alias's own name is contributed too so a boundary that implements it
- * is still matched through the alias/Port equivalence rule.
+ * same reason. Structural utilities are unwrapped, while `Repository<T>` keeps
+ * its repository identity. A key union inside `Pick` is not a receiver union.
  */
 const bareNames = (typeText: string | undefined): string[] => {
   const single = bareTypeName(typeText);
@@ -224,34 +262,7 @@ const bareNames = (typeText: string | undefined): string[] => {
   // Only annotations that actually compose types need splitting; a plain
   // `Pool` must keep resolving through the original single-name rule.
   if (!/[|&]/.test(typeText)) return single ? [single] : [];
-  const out: string[] = [];
-  const PRIMITIVES = new Set([
-    'undefined',
-    'null',
-    'void',
-    'never',
-    'any',
-    'unknown',
-    'object',
-    'this',
-    'true',
-    'false',
-  ]);
-  for (const raw of typeText.split(/[|&]/)) {
-    // `Pick<A, 'b'>` / `Omit<A, 'b'>` is a VIEW of `A`: the alias name is kept
-    // for alias equivalence, and `A` is contributed because a class implementing
-    // the view implements `A` — this is what makes a narrowed Port resolve.
-    const aliased = /^\s*([A-Za-z_$][\w$]*)\s*<([^<>]*)>/.exec(raw);
-    if (aliased) {
-      const arg = bareTypeName(aliased[2]);
-      if (arg && !PRIMITIVES.has(arg)) out.push(arg);
-      if (aliased[1]) out.push(aliased[1]);
-      continue;
-    }
-    const name = /([A-Za-z_$][\w$]*)\s*$/.exec(raw.replace(/[()[\]{}]/g, ' ').trim());
-    if (name?.[1] && !PRIMITIVES.has(name[1])) out.push(name[1]);
-  }
-  return [...new Set(out)];
+  return [...annotationNames(typeText)];
 };
 
 /**
@@ -546,7 +557,8 @@ export const buildReachIndex = (root: string): ReachIndex => {
             return;
           }
           const argumentsOf = ts.isTypeReferenceNode(t) ? (t.typeArguments ?? []) : [];
-          const isUtility = ts.isTypeReferenceNode(t) && UTILITY_TYPES.has(t.typeName.getText(sf));
+          const isUtility =
+            ts.isTypeReferenceNode(t) && STRUCTURAL_TYPE_VIEWS.has(t.typeName.getText(sf));
           const narrowsByLiteral = argumentsOf.some((a) => ts.isTypeLiteralNode(a));
           if (!isUtility && !narrowsByLiteral) return;
           const add = (inner: ts.TypeNode | undefined): void => {
@@ -566,12 +578,13 @@ export const buildReachIndex = (root: string): ReachIndex => {
         // `ReturnType<Port['saveRevision']>` mentions `Port` but a member-level
         // mention is not a composition.
         const walk = (n: ts.Node, memberLevel: boolean): void => {
+          if (memberLevel) return;
           if (ts.isTypeReferenceNode(n)) {
             const argumentsOf = n.typeArguments ?? [];
-            const isUtility = UTILITY_TYPES.has(n.typeName.getText(sf));
+            const isUtility = STRUCTURAL_TYPE_VIEWS.has(n.typeName.getText(sf));
             // `Pick<Port, 'a' | 'b'>` names `Port`, whose members the view is made
             // of. Only the FIRST argument: the second is a key union, not a type.
-            const targets = isUtility ? argumentsOf.slice(0, 1) : argumentsOf;
+            const targets = isUtility ? argumentsOf.slice(0, 1) : [];
             if (!isUtility) {
               const head = n.typeName.getText(sf).split('.').pop();
               if (head && !memberLevel) list.push(head);

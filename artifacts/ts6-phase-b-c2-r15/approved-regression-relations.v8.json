@@ -460,7 +460,7 @@
       "testEvidenceId": "test:tests/database/stage-6-commit-ambiguity.test.ts:returns OUTCOME_UNKNOWN, then resolves all three direct paths by deterministic replay",
       "file": "tests/database/stage-6-commit-ambiguity.test.ts",
       "testName": "returns OUTCOME_UNKNOWN, then resolves all three direct paths by deterministic replay",
-      "covers": ["safe:adapters/postgres-stage6/src/index.ts:537"],
+      "covers": ["safe:adapters/postgres-stage6/src/index.ts:541"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresCanonicalKnowledgeRepository.commitV2",
       "path": ["PostgresCanonicalKnowledgeRepository.commitV2"]
@@ -469,7 +469,7 @@
       "testEvidenceId": "test:tests/database/frontend-canonical-commit-frontend-draft.test.ts:is replay-idempotent for the same commit id + authority",
       "file": "tests/database/frontend-canonical-commit-frontend-draft.test.ts",
       "testName": "is replay-idempotent for the same commit id + authority",
-      "covers": ["safe:adapters/postgres-stage6/src/index.ts:788"],
+      "covers": ["safe:adapters/postgres-stage6/src/index.ts:792"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresCanonicalKnowledgeRepository.commitFrontendDraft",
       "path": ["PostgresCanonicalKnowledgeRepository.commitFrontendDraft"]
@@ -953,7 +953,7 @@
       "testEvidenceId": "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one",
       "file": "tests/database/stage-6-postgres.test.ts",
       "testName": "serializes concurrent approved writes and rejects the stale one",
-      "covers": ["safe:adapters/postgres-stage6/src/index.ts:291"],
+      "covers": ["safe:adapters/postgres-stage6/src/index.ts:295"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresCanonicalKnowledgeRepository.commit",
       "path": ["commit"]

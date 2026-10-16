@@ -303,3 +303,15 @@ Fake-only7종 결과의 저장·claim/attempt binding·no-edge 완료·재기동
 일반 Ask/UI와 운영 전환은 아직 완료하지 않았다. 기존 counter/원장 권위를
 재설계하거나 과거72/432/B12를 재채점하지 않는다. Git 게시·운영 활성화·실AI
 승인을 자동 확장하지 않는다.
+
+### 2026-10-17 — PR392 CI PASS 후 독립 리뷰와 TS6 근거 보정
+
+PR392 head `dbfdef92743fcffbdaa3017d00e061de9bf3d6b3`의 CI38913890006은
+Quality·Frontend·Required Gates SUCCESS, PostgreSQL767 PASS/2 SKIP였다.
+이후 독립 AI 코드 리뷰가 generic payload를 Port로 해석하는 기존 분석기 결함과
+binding 필드 대조 공백을 확인했다. CI 성공 이력과 실제 근거의 정확성을 구분하여
+MERGE_HOLD를 유지하고 [최소 로컬 보정](./ts6-generic-binding-correction-2026-10-17.md)을
+검증했다. TS6 전체64/64 PASS이며 v2~v7 동결 입력, 기존 소유권·분류와 운영
+동작은 유지한다. 현재 v8의 잘못된 호출 근거는 제거했다. 새 exact head의 게시·CI와
+별도 merge 승인이 남는다. NO_RELATION의 정상 제품 연결·최종 Windows release는
+이 감사 보정으로 완료되지 않으며 운영 앱/worker와 실제 provider는 실행하지 않았다.

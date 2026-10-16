@@ -315,3 +315,34 @@ MERGE_HOLD를 유지하고 [최소 로컬 보정](./ts6-generic-binding-correcti
 동작은 유지한다. 현재 v8의 잘못된 호출 근거는 제거했다. 새 exact head의 게시·CI와
 별도 merge 승인이 남는다. NO_RELATION의 정상 제품 연결·최종 Windows release는
 이 감사 보정으로 완료되지 않으며 운영 앱/worker와 실제 provider는 실행하지 않았다.
+
+### 2026-10-17 — PR392 Canonical 완료와 실제 남은 제품 경계
+
+사용자 exact-head 승인에 따라 PR392를 merge
+`c58ea548b0aa4024f8a9243f4bff7cf941be3ec3`로 반영했다. 병합 tree
+`586347510571ae32ea4f771c71985696034d567f`는 승인 head5fb78d1e와 같고,
+[main CI38942714053](https://github.com/JasonCutter/shotgun/actions/runs/38942714053)의
+Quality·Frontend·Required Gates가 SUCCESS다. TS6 64, unit1718, contract832,
+PostgreSQL767 PASS/2 기존 SKIP, Frontend405 및 E2E86 PASS/6 기존 SKIP다.
+앞선 실패·보정·게시 대기 기록은 그대로 보존한다. 운영 적용은 하지 않았다.
+
+새 Canonical 기준의 남은 공백은 실행 결과 저장만으로 negative가 기존 positive
+graph/Ask 이웃을 철회하지 못한다는 점이다. 기존 PostgreSQL/Fake suite에 추가한
+진단으로 현재 동작을 재현하며 이를 제품 통합 성공으로 세지 않는다.
+[제품 연결 후보 계약](../../architecture/add/vp05-evaluation-trust/negative-ledger-product-integration-proposal.md)은
+기존 Ledger receipt/epoch/history/projection만 재사용하는 최소 범위를 준비한다.
+중요한 지식 계약의 명시 승인 전에는 신규 migration이나 활성 runtime 연결을
+적용하지 않는다. 그동안 새 exact Canonical의 Windows 격리 설치/Fake 제품 여정은
+기존 증거·도구를 재사용해 독립적으로 검증한다.
+
+Windows 실제 운영 shortcut/reboot와 별도 deferred 독립 Desktop Distribution
+단계는 서로 다르다. 기존 PowerShell/browser launcher의 검증을 Setup.exe/독립창
+완료로 보고하지 않는다. 해당 배포의 별도 활성화 조건과 운영 release/백업/
+quiescence/schema/credential/worker 승인 경계를 유지한다. 전체 VP 최종 인수나
+실제 AI 의미 정확도 인증을 이 문서 정비만으로 완료 처리하지 않는다.
+
+후속 [제품 경계·Windows 보고](./product-gap-and-windows-canonical-2026-10-17.md)는
+최종 source의 PostgreSQL20/20과 실제 GitHub c58 설치본878파일·정상 owner 아래
+A/B/수정본·질문3·Fake7·재시작 보존 PASS를 기록한다. Negative 지식 연결은
+아직 후보 계약이며 운영 icon/reboot는 미실행이다. 기존 증거·운영 환경을
+보존하고 격리 자원을 정리했다. 새 core contract 승인 요청과 Git 게시 승인은 별개다.

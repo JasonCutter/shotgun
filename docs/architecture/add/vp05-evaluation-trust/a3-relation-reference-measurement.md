@@ -1,5 +1,9 @@
 # VP-05 A3 — Relation Reference 및 측정 계약 0.1
 
+> 2026-10-16 후속: [0.2 로컬 보완](./a3-relation-reference-measurement-0.2.md)은
+> 새 보고서의 full-tuple 미판정/N/A·bounds, tuple-only 및 집계 scope를 분리한다.
+> 아래0.1은 당시 계약 이력으로 보존한다. 기존 실험을0.2로 재채점하지 않는다.
+
 - Record: `VP05-EVAL-A3-20261012`
 - Status: **LOCAL IMPLEMENTATION / CANONICAL PUBLICATION PENDING**
 - Subject base: `main@aba6ff27f9620ee1a3f408f8df81e8aad21cc584`

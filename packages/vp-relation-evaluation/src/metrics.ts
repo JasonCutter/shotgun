@@ -8,6 +8,8 @@ import type {
   RelationObservation,
   RelationReference,
   RelationTuple,
+  TupleMetrics,
+  OperationalRelationMetrics,
 } from './types.js';
 import {
   hasAssessedWarrant,
@@ -15,6 +17,8 @@ import {
   isPositive,
   referenceExclusions,
   validateRelationEvaluation,
+  externalVerificationErrors,
+  warrantAssessmentSubject,
 } from './validation.js';
 
 type Row = {
@@ -79,18 +83,48 @@ const positiveMetrics = (
   const tp = hits.length;
   const fp = predicted.length - tp;
   const fn = positives.length - tp;
-  const critical = positives.filter((row) => row.reference.critical);
   const directed = rows.filter((row) => {
     const tuple = tupleFor(row);
     return tuple !== null && directionEligible(row, tuple, plan);
   });
   const negatives = rows.filter((row) => !expectedPositive(row));
+  const allPredicted = rows.filter((row) => {
+    const tuple = tupleFor(row);
+    return tuple !== null && isPositive(tuple);
+  });
+  const allPositives = rows.filter(expectedPositive);
+  const unknown = rows.filter((row) => !canScore(row, tupleFor(row), plan));
+  const unknownCritical = unknown.filter((row) => row.reference.critical).length;
+  const criticalHits = hits.filter((row) => row.reference.critical).length;
+  const allCritical = allPositives.filter((row) => row.reference.critical).length;
+  const point = (numerator: number, denominator: number, unresolved: number) =>
+    unresolved > 0 ? { numerator: null, denominator, value: null } : ratio(numerator, denominator);
+  const bounds = (lower: number, upper: number, denominator: number) => ({
+    lower: ratio(lower, denominator).value,
+    upper: ratio(upper, denominator).value,
+  });
+  const f1Denominator = 2 * tp + fp + fn + 2 * unknown.length;
   return {
     counts: { tp, fp, fn },
-    precision: ratio(tp, predicted.length),
-    recall: ratio(tp, positives.length),
-    f1: ratio(2 * tp, 2 * tp + fp + fn),
-    criticalRecall: ratio(hits.filter((row) => row.reference.critical).length, critical.length),
+    assessment: {
+      scope: 'ALL_ELIGIBLE_DETERMINATE_TASKS',
+      complete: unknown.length === 0,
+      unresolvedWarrants: unknown.length,
+      assessedWarrantResponses: rows.filter(
+        (row) => row.observation && hasAssessedWarrant(row.reference, row.observation, plan.lane),
+      ).length,
+      noPredictionPositiveMisses: allPositives.filter((row) => tupleFor(row) === null).length,
+    },
+    precision: point(tp, allPredicted.length, unknown.length),
+    recall: point(tp, allPositives.length, unknown.length),
+    f1: point(2 * tp, f1Denominator, unknown.length),
+    criticalRecall: point(criticalHits, allCritical, unknownCritical),
+    bounds: {
+      precision: bounds(tp, tp + unknown.length, allPredicted.length),
+      recall: bounds(tp, tp + unknown.length, allPositives.length),
+      f1: bounds(2 * tp, 2 * (tp + unknown.length), f1Denominator),
+      criticalRecall: bounds(criticalHits, criticalHits + unknownCritical, allCritical),
+    },
     conditionalDirectionAccuracy: ratio(
       directed.filter((row) => correct(row, tupleFor(row)!, plan)).length,
       directed.length,
@@ -102,6 +136,91 @@ const positiveMetrics = (
       }).length,
       negatives.length,
     ),
+  };
+};
+
+const tupleMetrics = (
+  rows: readonly Row[],
+  tupleFor: (row: Row) => RelationTuple | null,
+): TupleMetrics => {
+  const predicted = rows.filter((row) => {
+    const tuple = tupleFor(row);
+    return tuple !== null && isPositive(tuple);
+  });
+  const positives = rows.filter(expectedPositive);
+  const hits = predicted.filter((row) => matchesKindAndDirection(row, tupleFor(row)!));
+  const tp = hits.length;
+  const fp = predicted.length - tp;
+  const fn = positives.length - tp;
+  const directed = predicted.filter(
+    (row) => isDirected(tupleFor(row)!) && matchesKind(row, tupleFor(row)!),
+  );
+  const negatives = rows.filter((row) => !expectedPositive(row));
+  return {
+    counts: { tp, fp, fn },
+    precision: ratio(tp, predicted.length),
+    recall: ratio(tp, positives.length),
+    f1: ratio(2 * tp, 2 * tp + fp + fn),
+    criticalRecall: ratio(
+      hits.filter((row) => row.reference.critical).length,
+      positives.filter((row) => row.reference.critical).length,
+    ),
+    conditionalDirectionAccuracy: ratio(
+      directed.filter((row) => matchesKindAndDirection(row, tupleFor(row)!)).length,
+      directed.length,
+    ),
+    negativeFalseLinkRate: ratio(
+      negatives.filter((row) => {
+        const tuple = tupleFor(row);
+        return tuple !== null && isPositive(tuple);
+      }).length,
+      negatives.length,
+    ),
+  };
+};
+
+const operationalMetrics = (rows: readonly Row[]): OperationalRelationMetrics => {
+  const observed = rows.flatMap((row) => (row.observation ? [row.observation] : []));
+  const responses = observed.filter((o) => o.outcome === 'RESPONSE');
+  const valid = responses.filter((o) => o.structure === 'VALID');
+  const grouped = new Map<string, Row[]>();
+  for (const row of rows) {
+    const group = grouped.get(row.reference.caseId) ?? [];
+    group.push(row);
+    grouped.set(row.reference.caseId, group);
+  }
+  const groups = [...grouped.values()].filter((group) => group.length > 1);
+  const complete = groups.filter((group) =>
+    group.every((row) => row.observation?.structure === 'VALID'),
+  );
+  const terminal = groups.filter((group) => group.every((row) => row.observation !== undefined));
+  const stable = complete.filter(
+    (group) => new Set(group.map((row) => relationArtifactDigest(rawTuple(row)))).size === 1,
+  );
+  const adoptedStable = terminal.filter(
+    (group) =>
+      new Set(
+        group.map((row) =>
+          relationArtifactDigest({
+            outcome: row.observation!.outcome,
+            adoption: row.observation!.adoption,
+            tuple: adoptedTuple(row),
+          }),
+        ),
+      ).size === 1,
+  );
+  return {
+    scope: 'ALL_SCHEDULED_TASKS',
+    scheduledTasks: rows.length,
+    responseTasks: responses.length,
+    structureValidity: ratio(valid.length, responses.length),
+    modelAbstentionRate: ratio(
+      valid.filter((o) => o.raw?.choice === 'UNRESOLVED').length,
+      responses.length,
+    ),
+    rawTupleStability: ratio(stable.length, complete.length),
+    strictAllRunStability: ratio(stable.length, groups.length),
+    adoptionStateStability: ratio(adoptedStable.length, terminal.length),
   };
 };
 
@@ -134,6 +253,12 @@ export const evaluateRelationObservations = (
   const negative = determinate.filter((row) => !expectedPositive(row));
   const responses = observations.filter((observation) => observation.outcome === 'RESPONSE');
   const valid = responses.filter((observation) => observation.structure === 'VALID');
+  const eligibleResponses = eligible.flatMap((row) =>
+    row.observation?.outcome === 'RESPONSE' ? [row.observation] : [],
+  );
+  const eligibleValid = eligibleResponses.filter(
+    (observation) => observation.structure === 'VALID',
+  );
   const rawScorable = determinate.filter((row) => canScore(row, rawTuple(row), plan));
   const adoptionScorable = determinate.filter((row) => canScore(row, adoptedTuple(row), plan));
   const rawConfirmed = positive.filter((row) => {
@@ -145,7 +270,8 @@ export const evaluateRelationObservations = (
     return tuple !== null && correct(row, tuple, plan);
   });
   const groups = plan.references
-    .map((reference) => allRows.filter((row) => row.reference.caseId === reference.caseId))
+    .filter((reference) => !excluded.has(reference.caseId))
+    .map((reference) => eligible.filter((row) => row.reference.caseId === reference.caseId))
     .filter((rows) => rows.length > 1);
   const rawComplete = groups.filter((rows) =>
     rows.every((row) => row.observation?.structure === 'VALID'),
@@ -203,10 +329,14 @@ export const evaluateRelationObservations = (
     insufficientTasks: insufficient.length,
     positiveTasks: positive.length,
     negativeTasks: negative.length,
-    rawFullTupleScorable: rawScorable.length,
-    rawWarrantUnassessed: determinate.length - rawScorable.length,
-    adoptedFullTupleScorable: adoptionScorable.length,
-    adoptedWarrantUnassessed: determinate.length - adoptionScorable.length,
+    rawOutcomeDecidable: rawScorable.length,
+    rawOutcomeUndecidable: determinate.length - rawScorable.length,
+    adoptedOutcomeDecidable: adoptionScorable.length,
+    adoptedOutcomeUndecidable: determinate.length - adoptionScorable.length,
+    assessedWarrantResponses: eligible.filter(
+      (row) => row.observation && hasAssessedWarrant(row.reference, row.observation, plan.lane),
+    ).length,
+    eligibleResponse: eligibleResponses.length,
     selectedLabelProbabilityObserved: observations.filter(
       (observation) => observation.selectedLabelProbability !== null,
     ).length,
@@ -223,16 +353,29 @@ export const evaluateRelationObservations = (
     target: plan.target,
     inputProfile: plan.inputProfile,
     exclusions,
+    semanticMetricScope: 'ELIGIBLE_REFERENCES_ONLY' as const,
+    operational: operationalMetrics(allRows),
+    warrantRejections: eligible.flatMap((row) => {
+      const observation = row.observation;
+      if (!observation || observation.warrant.status !== 'ASSESSED') return [];
+      const reasons = externalVerificationErrors(
+        observation.warrant.verification,
+        warrantAssessmentSubject(row.reference, observation),
+        ['WARRANT'],
+      );
+      return reasons.length ? [{ taskId: observation.taskId, reasons }] : [];
+    }),
     counts,
     coverage: {
       referenceEligibility: ratio(counts.eligibleReferences, plan.references.length),
       referenceCertification: ratio(counts.externallyVerifiedReferences, plan.references.length),
       semanticTaskEligibility: ratio(eligible.length, plan.tasks.length),
       terminalCompletion: ratio(observations.length, plan.tasks.length),
-      structureValidity: ratio(valid.length, responses.length),
+      structureValidity: ratio(eligibleValid.length, eligibleResponses.length),
       kindScorable: ratio(validDeterminate.length, determinate.length),
-      rawFullTupleScorable: ratio(rawScorable.length, determinate.length),
-      adoptedFullTupleScorable: ratio(adoptionScorable.length, determinate.length),
+      rawOutcomeDecidable: ratio(rawScorable.length, determinate.length),
+      adoptedOutcomeDecidable: ratio(adoptionScorable.length, determinate.length),
+      warrantAssessment: ratio(counts.assessedWarrantResponses, eligibleResponses.length),
       // Operational confirmed yield is not correctness of unobserved/unassessed outputs.
       rawConfirmedPositiveYield: ratio(rawConfirmed.length, positive.length),
       adoptedConfirmedPositiveYield: ratio(adoptedConfirmed.length, positive.length),
@@ -241,6 +384,10 @@ export const evaluateRelationObservations = (
     },
     raw: positiveMetrics(determinate, plan, rawTuple),
     adopted: positiveMetrics(determinate, plan, adoptedTuple),
+    tupleOnly: {
+      raw: tupleMetrics(determinate, rawTuple),
+      adopted: tupleMetrics(determinate, adoptedTuple),
+    },
     kindCorrectness: ratio(
       validDeterminate.filter((row) => matchesKind(row, rawTuple(row)!)).length,
       validDeterminate.length,
@@ -249,7 +396,10 @@ export const evaluateRelationObservations = (
       negative.filter((row) => rawTuple(row)?.choice === 'NO_RELATION').length,
       negative.length,
     ),
-    modelAbstentionRate: ratio(counts.voluntaryAbstention, responses.length),
+    modelAbstentionRate: ratio(
+      eligibleValid.filter((observation) => observation.raw?.choice === 'UNRESOLVED').length,
+      eligibleResponses.length,
+    ),
     abstentionAppropriateness: ratio(
       insufficient.filter((row) => rawTuple(row)?.choice === 'UNRESOLVED').length,
       insufficient.length,

@@ -433,38 +433,67 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
     );
   });
 
-  it('classifies a stalled HTTP 200 response body as a provider timeout', async () => {
-    const deepseek = new DeepSeekConnectivityAdapter({
+  it.each([
+    {
+      operation: 'probe',
+      timeoutMs: 20,
+      generationTimeoutMs: 1000,
+      code: 'TIMEOUT',
+      retryable: true,
+    },
+    {
+      operation: 'generation',
       timeoutMs: 1000,
       generationTimeoutMs: 20,
-      fetch: async (_input, init) =>
-        new Response(
-          new ReadableStream<Uint8Array>({
-            start(controller) {
-              controller.enqueue(new TextEncoder().encode('{"choices":['));
-              init?.signal?.addEventListener(
-                'abort',
-                () => controller.error(new DOMException('request aborted', 'AbortError')),
-                { once: true },
-              );
-            },
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        ),
-    });
-
-    await expect(
-      deepseek.generateStructured({
-        modelId: 'deepseek-flash',
-        apiKey: Buffer.from('secret'),
-        request: {
-          systemInstruction: 'Return JSON only.',
-          prompt: 'Extract claims.',
-          responseSchema: { type: 'object' },
+      code: 'OUTCOME_UNKNOWN',
+      retryable: false,
+    },
+  ])(
+    'classifies a stalled HTTP 200 $operation body without granting generation retry',
+    async ({ operation, timeoutMs, generationTimeoutMs, code, retryable }) => {
+      let providerCalls = 0;
+      let aborts = 0;
+      const deepseek = new DeepSeekConnectivityAdapter({
+        timeoutMs,
+        generationTimeoutMs,
+        fetch: async (_input, init) => {
+          providerCalls += 1;
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('{"choices":['));
+                init?.signal?.addEventListener(
+                  'abort',
+                  () => {
+                    aborts += 1;
+                    controller.error(new DOMException('request aborted', 'AbortError'));
+                  },
+                  { once: true },
+                );
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          );
         },
-      }),
-    ).rejects.toMatchObject({ code: 'TIMEOUT', retryable: true });
-  });
+      });
+
+      await expect(
+        operation === 'probe'
+          ? deepseek.testConnection({ modelId: 'deepseek-flash', apiKey: Buffer.from('secret') })
+          : deepseek.generateStructured({
+              modelId: 'deepseek-flash',
+              apiKey: Buffer.from('secret'),
+              request: {
+                systemInstruction: 'Return JSON only.',
+                prompt: 'Extract claims.',
+                responseSchema: { type: 'object' },
+              },
+            }),
+      ).rejects.toMatchObject({ code, retryable });
+      expect(providerCalls).toBe(1);
+      expect(aborts).toBe(1);
+    },
+  );
 
   it('projects a definite provider terminal failure as FAILED rather than Model unavailable', async () => {
     const { backend } = createBackend({

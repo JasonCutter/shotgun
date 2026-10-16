@@ -10,6 +10,7 @@ import {
   ImageObservationOutputRejectedError,
   type CapturedImageExecutor,
   type ImageObservationExecutionResolverPort,
+  type IsolatedImageLiveAcceptance,
 } from '../../../modules/image-observation-execution/src/index.js';
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
 
@@ -24,12 +25,70 @@ export function createIsolatedFakeImageExecutionResolver(options: {
 }): ImageObservationExecutionResolverPort {
   if (options.runtimeProfile !== 'runtime-test' || typeof options.fakeHttp !== 'function')
     throw new Error('ISOLATED_FAKE_IMAGE_AUTHORITY_REQUIRED');
+  return createCapturedImageExecutionResolver({
+    executionResolver: options.executionResolver,
+    vault: options.vault,
+    http: options.fakeHttp,
+    baseUrl: options.baseUrl,
+    transportKind: 'ISOLATED_FAKE',
+    liveCapable: false,
+  });
+}
+
+/** Explicit isolated acceptance only. The caller supplies its guarded real
+ * transport and the same grant passed to executeImageObservation. */
+export function createIsolatedLiveImageExecutionResolver(options: {
+  readonly runtimeProfile: string;
+  readonly executionResolver: AIProviderExecutionResolverPort;
+  readonly vault: CredentialVaultPort;
+  readonly liveHttp: NonNullable<DeepSeekConnectivityAdapterOptions['fetch']>;
+  readonly liveAcceptance: IsolatedImageLiveAcceptance;
+  readonly baseUrl: string;
+}): ImageObservationExecutionResolverPort {
+  if (
+    options.runtimeProfile !== 'runtime-test' ||
+    typeof options.liveHttp !== 'function' ||
+    !options.liveAcceptance ||
+    typeof options.liveAcceptance.authorize !== 'function' ||
+    !/^https:\/\/api\.deepseek\.com(?:\/v1)?\/?$/u.test(options.baseUrl)
+  )
+    throw new Error('ISOLATED_LIVE_IMAGE_ACCEPTANCE_REQUIRED');
+  return createCapturedImageExecutionResolver({
+    executionResolver: options.executionResolver,
+    vault: options.vault,
+    http: options.liveHttp,
+    baseUrl: options.baseUrl,
+    transportKind: 'ISOLATED_LIVE_ACCEPTANCE',
+    liveCapable: true,
+    liveAcceptance: options.liveAcceptance,
+  });
+}
+
+function createCapturedImageExecutionResolver(
+  options: {
+    readonly executionResolver: AIProviderExecutionResolverPort;
+    readonly vault: CredentialVaultPort;
+    readonly http: NonNullable<DeepSeekConnectivityAdapterOptions['fetch']>;
+    readonly baseUrl?: string;
+  } & (
+    | {
+        readonly transportKind: 'ISOLATED_FAKE';
+        readonly liveCapable: false;
+        readonly liveAcceptance?: never;
+      }
+    | {
+        readonly transportKind: 'ISOLATED_LIVE_ACCEPTANCE';
+        readonly liveCapable: true;
+        readonly liveAcceptance: IsolatedImageLiveAcceptance;
+      }
+  ),
+): ImageObservationExecutionResolverPort {
   const baseResolver = options.executionResolver;
   const resolve = baseResolver.resolve;
   const vault = options.vault;
   const native = new DeepSeekConnectivityAdapter({
     baseUrl: options.baseUrl,
-    fetch: options.fakeHttp,
+    fetch: options.http,
   });
   return {
     async resolve(snapshot) {
@@ -77,12 +136,22 @@ export function createIsolatedFakeImageExecutionResolver(options: {
           return { status: 'SUCCEEDED' };
         },
       );
-      if (!captured) throw new Error('IMAGE_FAKE_CREDENTIAL_CAPTURE_FAILED');
+      if (!captured) throw new Error('IMAGE_CREDENTIAL_CAPTURE_FAILED');
       const credentialFingerprint = `sha256:${relationCredentialFingerprint(captured)}`;
+      if (
+        options.liveAcceptance &&
+        credentialFingerprint !== options.liveAcceptance.credentialFingerprint
+      ) {
+        captured.fill(0);
+        throw new Error('ISOLATED_LIVE_IMAGE_CREDENTIAL_FINGERPRINT_MISMATCH');
+      }
       let used = false;
+      const transport =
+        options.transportKind === 'ISOLATED_FAKE'
+          ? { transportKind: 'ISOLATED_FAKE' as const, liveCapable: false as const }
+          : { transportKind: 'ISOLATED_LIVE_ACCEPTANCE' as const, liveCapable: true as const };
       return Object.freeze({
-        transportKind: 'ISOLATED_FAKE' as const,
-        liveCapable: false as const,
+        ...transport,
         identity,
         credentialFingerprint,
         adapterVersion: native.adapterVersion,

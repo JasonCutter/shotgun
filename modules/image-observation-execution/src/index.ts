@@ -33,9 +33,17 @@ export type ImageObservationExecutionInput = {
   readonly imageBytes: Uint8Array;
 };
 export type ImageObservationExecutionSnapshot = Omit<ImageObservationExecutionInput, 'imageBytes'>;
-export type CapturedImageExecutor = {
-  readonly transportKind: 'ISOLATED_FAKE';
-  readonly liveCapable: false;
+export type IsolatedImageLiveAcceptance = {
+  readonly acceptanceId: string;
+  readonly expiresAt: string;
+  readonly sourceContentHash: string;
+  readonly credentialFingerprint: string;
+  readonly authorize: (snapshot: ImageObservationExecutionSnapshot) => Promise<void>;
+};
+export type CapturedImageExecutor = (
+  | { readonly transportKind: 'ISOLATED_FAKE'; readonly liveCapable: false }
+  | { readonly transportKind: 'ISOLATED_LIVE_ACCEPTANCE'; readonly liveCapable: true }
+) & {
   readonly identity: AIExecutionIdentity;
   readonly credentialFingerprint: string;
   readonly adapterVersion: string;
@@ -181,6 +189,9 @@ export type ImageObservationExecutionRecord = {
   readonly callId: string;
   readonly attemptId?: string;
   readonly state: ImageObservationExecutionState;
+  /** Missing on legacy Fake rows; readers normalize it to ISOLATED_FAKE. */
+  readonly transportKind?: 'ISOLATED_FAKE' | 'ISOLATED_LIVE_ACCEPTANCE';
+  readonly acceptanceId?: string;
   readonly snapshot: ImageObservationExecutionSnapshot;
   readonly executionIdentity: AIExecutionIdentity;
   readonly credentialFingerprint: string;
@@ -312,18 +323,21 @@ export function imageObservationTransformationIdentity(record: ImageObservationE
   return Object.freeze({ id: base.id, version: label(version) });
 }
 
-/** Isolated Fake implementation only. No production model/capability, egress,
- * global budget fallback or relation claim is authorized by this module. */
+/** Isolated Fake or an exact, expiring image acceptance. No general production
+ * capability, global budget fallback or relation claim is authorized here. */
 export async function executeImageObservation(
   input: ImageObservationExecutionInput,
   options: {
     readonly runtimeProfile: string;
     readonly repository: ImageObservationExecutionRepositoryPort;
     readonly resolver: ImageObservationExecutionResolverPort;
+    readonly liveAcceptance?: IsolatedImageLiveAcceptance;
   },
 ): Promise<ImageObservationExecutionRecord> {
+  const acceptance = options.liveAcceptance;
+  const expectedTransportKind = acceptance ? 'ISOLATED_LIVE_ACCEPTANCE' : 'ISOLATED_FAKE';
   if (options.runtimeProfile !== 'runtime-test')
-    invalid('Image execution requires the isolated Fake runtime');
+    invalid('Image execution requires an isolated runtime authority');
   if (
     !(input.imageBytes instanceof Uint8Array) ||
     !input.imageBytes.length ||
@@ -393,6 +407,41 @@ export async function executeImageObservation(
     accessScope: input.accessScope.map(label),
     sensitivity: input.sensitivity,
   });
+  const acceptanceBinding = acceptance
+    ? {
+        acceptanceId: label(acceptance.acceptanceId),
+        expiresAt: label(acceptance.expiresAt),
+        sourceContentHash: digest(acceptance.sourceContentHash),
+        credentialFingerprint: digest(acceptance.credentialFingerprint),
+        authorize: acceptance.authorize,
+      }
+    : undefined;
+  const checkAcceptance = async (fingerprint?: string) => {
+    if (!acceptanceBinding || !acceptance) return;
+    if (
+      typeof acceptanceBinding.authorize !== 'function' ||
+      !Number.isFinite(Date.parse(acceptanceBinding.expiresAt)) ||
+      Date.parse(acceptanceBinding.expiresAt) <= Date.now() ||
+      acceptanceBinding.sourceContentHash !== snapshot.sourceContentHash ||
+      (fingerprint !== undefined && acceptanceBinding.credentialFingerprint !== fingerprint) ||
+      acceptance.acceptanceId !== acceptanceBinding.acceptanceId ||
+      acceptance.expiresAt !== acceptanceBinding.expiresAt ||
+      acceptance.sourceContentHash !== acceptanceBinding.sourceContentHash ||
+      acceptance.credentialFingerprint !== acceptanceBinding.credentialFingerprint ||
+      acceptance.authorize !== acceptanceBinding.authorize
+    )
+      invalid('Isolated image live acceptance changed or expired');
+    await acceptanceBinding.authorize(snapshot);
+    if (
+      Date.parse(acceptanceBinding.expiresAt) <= Date.now() ||
+      acceptance.acceptanceId !== acceptanceBinding.acceptanceId ||
+      acceptance.expiresAt !== acceptanceBinding.expiresAt ||
+      acceptance.sourceContentHash !== acceptanceBinding.sourceContentHash ||
+      acceptance.credentialFingerprint !== acceptanceBinding.credentialFingerprint ||
+      acceptance.authorize !== acceptanceBinding.authorize
+    )
+      invalid('Isolated image live acceptance changed or expired');
+  };
   checkedTransformationBase(snapshot.transformerId, snapshot.transformerVersion);
   const repository = options.repository,
     resolver = options.resolver;
@@ -404,6 +453,14 @@ export async function executeImageObservation(
   if (existing) {
     if (existing.requestDigest !== requestDigest)
       invalid('Existing image request identity changed');
+    if (
+      (existing.transportKind ?? 'ISOLATED_FAKE') !== expectedTransportKind ||
+      (existing.acceptanceId ?? undefined) !== acceptanceBinding?.acceptanceId ||
+      (acceptanceBinding &&
+        existing.credentialFingerprint !== acceptanceBinding.credentialFingerprint)
+    )
+      invalid('Existing image transport authority changed');
+    await checkAcceptance(existing.credentialFingerprint);
     if (existing.state === 'PROVIDER_RUNNING') {
       // This may be a crashed or still-running peer. Never steal/re-dispatch it.
       await repository.markUnknown(snapshot.projectId, existing.callId, existing.attemptId!);
@@ -411,14 +468,15 @@ export async function executeImageObservation(
     }
     if (existing.state !== 'REQUESTED') return existing;
   }
+  await checkAcceptance();
   const captured = await resolver.resolve(snapshot);
   const discard = captured.discardCapturedCredential;
   try {
     const identityObject = captured.identity,
       generate = captured.generateImage;
     if (
-      captured.transportKind !== 'ISOLATED_FAKE' ||
-      captured.liveCapable !== false ||
+      captured.transportKind !== expectedTransportKind ||
+      captured.liveCapable !== Boolean(acceptanceBinding) ||
       typeof generate !== 'function'
     )
       invalid('Live image execution authority is unavailable');
@@ -437,12 +495,14 @@ export async function executeImageObservation(
     });
     const adapterVersion = label(captured.adapterVersion),
       credentialFingerprint = digest(captured.credentialFingerprint);
+    if (acceptanceBinding && credentialFingerprint !== acceptanceBinding.credentialFingerprint)
+      invalid('Isolated image credential fingerprint changed');
     const unchanged = () => {
       if (
         captured.identity !== identityObject ||
         captured.generateImage !== generate ||
-        captured.transportKind !== 'ISOLATED_FAKE' ||
-        captured.liveCapable !== false ||
+        captured.transportKind !== expectedTransportKind ||
+        captured.liveCapable !== Boolean(acceptanceBinding) ||
         captured.adapterVersion !== adapterVersion ||
         captured.credentialFingerprint !== credentialFingerprint ||
         stableJson(identityObject) !== stableJson(identity)
@@ -452,6 +512,8 @@ export async function executeImageObservation(
     const record = await repository.ensure({
       callId: randomUUID(),
       state: 'REQUESTED',
+      transportKind: expectedTransportKind,
+      ...(acceptanceBinding ? { acceptanceId: acceptanceBinding.acceptanceId } : {}),
       snapshot,
       executionIdentity: identity,
       credentialFingerprint,
@@ -461,6 +523,12 @@ export async function executeImageObservation(
       createdAt: new Date().toISOString(),
     });
     if (record.state !== 'REQUESTED') {
+      if (
+        (record.transportKind ?? 'ISOLATED_FAKE') !== expectedTransportKind ||
+        (record.acceptanceId ?? undefined) !== acceptanceBinding?.acceptanceId ||
+        record.credentialFingerprint !== credentialFingerprint
+      )
+        invalid('Durable captured execution context mismatch');
       if (record.state === 'PROVIDER_RUNNING') {
         await repository.markUnknown(snapshot.projectId, record.callId, record.attemptId!);
         return frozen({ ...record, state: 'OUTCOME_UNKNOWN' as const });
@@ -471,7 +539,9 @@ export async function executeImageObservation(
       record.requestDigest !== requestDigest ||
       stableJson(record.executionIdentity) !== stableJson(identity) ||
       record.credentialFingerprint !== credentialFingerprint ||
-      record.adapterVersion !== adapterVersion
+      record.adapterVersion !== adapterVersion ||
+      (record.transportKind ?? 'ISOLATED_FAKE') !== expectedTransportKind ||
+      (record.acceptanceId ?? undefined) !== acceptanceBinding?.acceptanceId
     )
       invalid('Durable captured execution context mismatch');
     unchanged();
@@ -504,6 +574,8 @@ export async function executeImageObservation(
     }
     // Recheck after the DB await. A substituted context cannot cause egress.
     try {
+      unchanged();
+      await checkAcceptance(credentialFingerprint);
       unchanged();
     } catch (error) {
       await repository.markUnknown(snapshot.projectId, record.callId, attemptId);

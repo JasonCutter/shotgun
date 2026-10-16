@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
-import type {
-  AIProviderCallRepositoryPort,
-  ClaimedProviderAttempt,
-  AIProviderExecutionRecord,
+import {
+  DEFAULT_CANDIDATE_PROVIDER_ATTEMPT_LEASE_MS,
+  type AIProviderCallRepositoryPort,
+  type ClaimedProviderAttempt,
+  type AIProviderExecutionRecord,
 } from '../../../modules/ai-provider/src/index.js';
 import type {
   CandidateBatch,
@@ -463,8 +464,13 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
           intendedClaim = { callId: record.callId, attempt };
           await client.query(
             `INSERT INTO ai.provider_attempts (attempt_id, call_id, attempt_number, status, latency_ms, started_at, lease_expires_at)
-             VALUES ($1,$2,$3,'running',0,now(),now() + interval '5 minutes')`,
-            [attempt.attemptId, record.callId, attempt.attemptNumber],
+             VALUES ($1,$2,$3,'running',0,now(),now() + ($4::bigint * interval '1 millisecond'))`,
+            [
+              attempt.attemptId,
+              record.callId,
+              attempt.attemptNumber,
+              DEFAULT_CANDIDATE_PROVIDER_ATTEMPT_LEASE_MS,
+            ],
           );
           await client.query(
             `UPDATE ai.provider_calls SET durable_state = 'PROVIDER_RUNNING', status = 'failed', updated_at = now() WHERE call_id = $1`,

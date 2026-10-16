@@ -228,6 +228,7 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
       },
       input.signal,
       this.generationTimeoutMs,
+      true,
     );
     return this.structuredResult(response, input.modelId);
   }
@@ -276,7 +277,7 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
         'VALIDATION_ERROR',
         'The image request exceeds its configured envelope limit.',
       );
-    const response = await this.request(input.apiKey, body, signal, this.generationTimeoutMs);
+    const response = await this.request(input.apiKey, body, signal, this.generationTimeoutMs, true);
     const provenance = Object.freeze({
       imageRequestDigest: `sha256:${createHash('sha256').update(serializedBody).digest('hex')}`,
       imageContentHashes: Object.freeze(
@@ -341,9 +342,21 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
     body: Record<string, unknown>,
     signal?: AbortSignal,
     timeoutMs = this.timeoutMs,
+    generation = false,
   ): Promise<DeepSeekResponse> {
     const apiKey = new TextDecoder().decode(apiKeyBytes);
     if (!apiKey.trim()) throw errorFor('AUTHENTICATION_FAILED', 'DeepSeek credential is empty.');
+    if (signal?.aborted)
+      throw errorFor('TERMINAL_FAILURE', 'The DeepSeek request was cancelled before execution.');
+    const missingResponse = (cause: unknown): ShotgunError =>
+      new ShotgunError({
+        code: 'OUTCOME_UNKNOWN',
+        safeMessage: 'The DeepSeek generation response was not received.',
+        module: 'deepseek-ai-provider',
+        operation: 'connectivity',
+        retryable: false,
+        cause,
+      });
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     timeout.unref();
@@ -361,6 +374,7 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
         return (await response.json()) as DeepSeekResponse;
       } catch (error) {
         if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+          if (generation) throw missingResponse(error);
           throw new ShotgunError({
             code: 'TIMEOUT',
             safeMessage: 'The DeepSeek request timed out.',
@@ -370,11 +384,13 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
             cause: error,
           });
         }
+        if (generation && !(error instanceof SyntaxError)) throw missingResponse(error);
         throw errorFor('VALIDATION_ERROR', 'DeepSeek returned an invalid response.', error);
       }
     } catch (error) {
       if (error instanceof ShotgunError) throw error;
       if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        if (generation) throw missingResponse(error);
         throw new ShotgunError({
           code: 'TIMEOUT',
           safeMessage: 'The DeepSeek request timed out.',
@@ -384,6 +400,7 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
           cause: error,
         });
       }
+      if (generation) throw missingResponse(error);
       throw errorFor('RETRYABLE_DEPENDENCY', 'DeepSeek could not be reached.', error);
     } finally {
       signal?.removeEventListener('abort', abort);

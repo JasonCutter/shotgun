@@ -218,7 +218,15 @@ export const V2_FIXTURE_RELATIVE_PATH =
 const SCOPES = ['adapters', 'modules', 'packages', 'assemblies', 'apps'] as const;
 const SKIP = new Set(['node_modules', 'dist', 'coverage', '.git']);
 const posix = (value: string): string => value.split(path.sep).join('/');
+// Refreshed from file bytes on EVERY buildAuditShape call, including cache hits.
+// Reuse those exact bytes within the synchronous audit/validation instead of
+// reopening a boundary/caller/test file for each evidence relation.
+let sourceSnapshot: { root: string; sources: ReadonlyMap<string, string> } | undefined;
 const read = (root: string, file: string): string | undefined => {
+  if (sourceSnapshot?.root === path.resolve(root)) {
+    const source = sourceSnapshot.sources.get(posix(file));
+    if (source !== undefined) return source;
+  }
   try {
     return fs.readFileSync(path.join(root, file), 'utf8');
   } catch {
@@ -842,6 +850,7 @@ let resolverRoot: string | undefined;
 // bytes. Paths are included so additions/removals also invalidate the audit.
 const auditSourceFingerprint = (root: string): string => {
   const digest = createHash('sha256');
+  const sources = new Map<string, string>();
   // The regression resolver can read explicitly linked TSX test blocks too.
   // Include them in invalidation without broadening the production scanner.
   const files: string[] = [];
@@ -857,9 +866,12 @@ const auditSourceFingerprint = (root: string): string => {
   for (const scope of [...SCOPES, 'tests']) walk(scope);
   files.sort();
   for (const file of files) {
+    const bytes = fs.readFileSync(path.join(root, file));
     digest.update(file).update('\0');
-    digest.update(fs.readFileSync(path.join(root, file))).update('\0');
+    digest.update(bytes).update('\0');
+    sources.set(file, bytes.toString('utf8'));
   }
+  sourceSnapshot = { root, sources };
   return digest.digest('hex');
 };
 
@@ -969,6 +981,7 @@ export const validateCountCrosswalk = (crosswalk: CountCrosswalk): Issue[] => {
 export const validateCorpus = (corpus: Corpus, root: string = ROOT): ValidationResult => {
   const issues: Issue[] = [];
   const audit = buildAuditShape(root);
+  const testTitles = new Map<string, ReadonlySet<string>>();
   const expected = new Map(audit.reconciliation.map((row) => [row.candidateId, row]));
   const SUPPORTED_SCHEMAS = new Set([
     'ts6.phase-b.transaction-authority.v2',
@@ -1129,8 +1142,12 @@ export const validateCorpus = (corpus: Corpus, root: string = ROOT): ValidationR
     const source = read(root, evidence.file);
     if (!source) add(issues, 'REGRESSION_FILE', evidence.file);
     else {
-      if (!activeTestTitles(source).has(evidence.testName))
-        add(issues, 'REGRESSION_NAME', evidence.testName);
+      let titles = testTitles.get(evidence.file);
+      if (!titles) {
+        titles = activeTestTitles(source);
+        testTitles.set(evidence.file, titles);
+      }
+      if (!titles.has(evidence.testName)) add(issues, 'REGRESSION_NAME', evidence.testName);
       if (!evidence.entrySymbol || evidence.path.length === 0)
         add(issues, 'REGRESSION_PATH', evidence.testEvidenceId);
       const coveredBoundary = evidence.covers

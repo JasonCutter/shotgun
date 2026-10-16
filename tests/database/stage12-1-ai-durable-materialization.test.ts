@@ -30,6 +30,7 @@ import { InProcessTransport } from '../../adapters/transport-in-process/src/inde
 import { runAIDurableMaterializationRecovery } from '../../assemblies/shotgun-app/src/server.js';
 import {
   createAIProviderModule,
+  DEFAULT_CANDIDATE_PROVIDER_ATTEMPT_LEASE_MS,
   type AIProviderExecutionRecord,
 } from '../../modules/ai-provider/src/index.js';
 import {
@@ -397,6 +398,84 @@ const outcomeUnknownAfterHandlerConnectorState = (): ConnectorRuntimeStatePort =
 describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
   beforeEach(resetDatabase);
   afterAll(async () => await isolatedDatabase?.dispose());
+
+  it('keeps an active 15-minute generation leased and fences recall after expiry', async () => {
+    let providerStarted!: () => void;
+    let releaseProvider!: () => void;
+    const started = new Promise<void>((resolve) => {
+      providerStarted = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    class PausedProvider extends FakeAIProviderAdapter {
+      override async generateStructured(
+        request: Parameters<FakeAIProviderAdapter['generateStructured']>[0],
+      ) {
+        providerStarted();
+        await released;
+        return super.generateStructured(request);
+      }
+    }
+    const harness = await createHarness(new InMemoryAssetStorage(), new PausedProvider(), {
+      candidateRepository: false,
+    });
+    const prepared = await prepareGeneration(harness, 'stage12-provider-lease');
+    const generation = generateStructured(harness, prepared);
+    await started;
+    const lease = await pool!.query<{ attempt_id: string; remaining_ms: number }>(
+      `SELECT attempt_id::text, EXTRACT(EPOCH FROM (lease_expires_at - now())) * 1000 AS remaining_ms
+       FROM ai.provider_attempts WHERE status = 'running'`,
+    );
+    expect(lease.rows).toHaveLength(1);
+    expect(Number(lease.rows[0]?.remaining_ms)).toBeGreaterThan(
+      DEFAULT_CANDIDATE_PROVIDER_ATTEMPT_LEASE_MS - 10_000,
+    );
+    expect(Number(lease.rows[0]?.remaining_ms)).toBeLessThanOrEqual(
+      DEFAULT_CANDIDATE_PROVIDER_ATTEMPT_LEASE_MS,
+    );
+
+    // Simulate six elapsed minutes without waiting for a real provider call.
+    await pool!.query(
+      `UPDATE ai.provider_attempts
+       SET started_at = now() - interval '6 minutes',
+           lease_expires_at = now() + interval '10 minutes'
+       WHERE attempt_id = $1`,
+      [lease.rows[0]!.attempt_id],
+    );
+
+    await harness.aiRepository.markExpiredRunningAttemptsOutcomeUnknown();
+    expect(
+      (await harness.aiRepository.findByRequestId(prepared.command.projectId!, prepared.requestId))
+        ?.state,
+    ).toBe('PROVIDER_RUNNING');
+    expect(
+      await harness.aiRepository.claimNextAttempt(prepared.command.projectId!, prepared.requestId),
+    ).toBeUndefined();
+
+    await pool!.query(
+      `UPDATE ai.provider_attempts SET lease_expires_at = now() - interval '1 second'
+       WHERE attempt_id = $1`,
+      [lease.rows[0]!.attempt_id],
+    );
+    await harness.aiRepository.markExpiredRunningAttemptsOutcomeUnknown();
+    expect(
+      await harness.aiRepository.findByRequestId(prepared.command.projectId!, prepared.requestId),
+    ).toMatchObject({ state: 'OUTCOME_UNKNOWN', attempts: [{ status: 'outcome_unknown' }] });
+    expect(
+      await harness.aiRepository.claimNextAttempt(prepared.command.projectId!, prepared.requestId),
+    ).toBeUndefined();
+
+    releaseProvider();
+    await expect(generation).resolves.toMatchObject({
+      result: { payload: { candidates: expect.any(Array) } },
+    });
+    expect(
+      (await harness.aiRepository.findByRequestId(prepared.command.projectId!, prepared.requestId))
+        ?.state,
+    ).toBe('OUTPUT_MATERIALIZED');
+    await harness.kernel.shutdown();
+  });
 
   it('persists one completed materialization and reuses it on repeated delivery', async () => {
     const provider = new FakeAIProviderAdapter();

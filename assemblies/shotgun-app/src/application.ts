@@ -60,7 +60,11 @@ import { PostgresVPAskEvidenceSearch } from '../../../adapters/vp-knowledge-post
 import { PostgresVPImageObservationLedger } from '../../../adapters/vp-knowledge-postgres/src/image-observations.js';
 import { PostgresImageObservationExecutionRepository } from '../../../adapters/image-observation-execution-postgres/src/index.js';
 import { createImageObservationRuntime } from './image-observation-runtime.js';
-import { createIsolatedFakeImageExecutionResolver } from './image-fake-execution-resolver.js';
+import {
+  createIsolatedFakeImageExecutionResolver,
+  createIsolatedLiveImageExecutionResolver,
+} from './image-fake-execution-resolver.js';
+import type { IsolatedImageLiveAcceptance } from '../../../modules/image-observation-execution/src/index.js';
 import { deriveAuthorizedSensitivities } from '../../../packages/contracts/src/index.js';
 import type { DeepSeekConnectivityAdapterOptions } from '../../../adapters/ai-provider-deepseek/src/index.js';
 import { PostgresVPRelationJobs } from '../../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
@@ -284,6 +288,13 @@ export type StartShotgunApplicationOptions = {
   /** Explicit isolated-test capability. No environment flag or production
    * fallback can activate image execution. HTTP must be an injected Fake. */
   readonly imageObservationFakeHttp?: NonNullable<DeepSeekConnectivityAdapterOptions['fetch']>;
+  /** Explicit user-approved isolated acceptance only; never read from env or
+   * enabled by normal application bootstrap. Live calls retain their real kind. */
+  readonly imageObservationIsolatedLive?: {
+    readonly acceptance: IsolatedImageLiveAcceptance;
+    readonly http: NonNullable<DeepSeekConnectivityAdapterOptions['fetch']>;
+    readonly baseUrl: string;
+  };
   /** Override HOST (defaults to the `HOST` env or `127.0.0.1`). */
   readonly host?: string;
   /** Override PORT (defaults to the `PORT` env or `3000`). */
@@ -435,17 +446,44 @@ export const startShotgunApplication = async (
   const stagingSecret = configuration.stagingSecret as string;
   const recoveryHarness = environmentProfile === 'recovery';
   const imageFakeHttp = options.imageObservationFakeHttp;
-  const imageObservationEnabled = imageFakeHttp !== undefined;
+  const imageLiveHttp = options.imageObservationIsolatedLive?.http;
+  const imageLiveBaseUrl = options.imageObservationIsolatedLive?.baseUrl;
+  const imageLiveAcceptance = options.imageObservationIsolatedLive?.acceptance
+    ? Object.freeze({ ...options.imageObservationIsolatedLive.acceptance })
+    : undefined;
+  const imageObservationEnabled =
+    imageFakeHttp !== undefined || options.imageObservationIsolatedLive !== undefined;
   if (
     imageObservationEnabled &&
     (environmentProfile !== 'runtime-test' ||
-      typeof imageFakeHttp !== 'function' ||
+      (imageFakeHttp !== undefined && options.imageObservationIsolatedLive !== undefined) ||
+      (imageFakeHttp === undefined &&
+        (typeof imageLiveHttp !== 'function' || imageLiveAcceptance === undefined)) ||
+      (imageFakeHttp !== undefined && typeof imageFakeHttp !== 'function') ||
       !/^\/shotgun_test_iso_[a-z0-9_]+$/u.test(new URL(databaseUrl).pathname))
   ) {
     throw new Error(
-      'Image observation requires an explicit Fake transport and isolated runtime-test database.',
+      options.imageObservationIsolatedLive === undefined
+        ? 'Image observation requires an explicit Fake transport and isolated runtime-test database.'
+        : 'Live image acceptance requires an explicit grant and isolated runtime-test database.',
     );
   }
+  if (
+    imageLiveAcceptance &&
+    (typeof imageLiveAcceptance.authorize !== 'function' ||
+      !imageLiveAcceptance.acceptanceId?.trim() ||
+      !/^sha256:[a-f0-9]{64}$/u.test(imageLiveAcceptance.sourceContentHash) ||
+      !/^sha256:[a-f0-9]{64}$/u.test(imageLiveAcceptance.credentialFingerprint) ||
+      !Number.isFinite(Date.parse(imageLiveAcceptance.expiresAt)) ||
+      Date.parse(imageLiveAcceptance.expiresAt) <= Date.now())
+  )
+    throw new Error('Live image acceptance grant is invalid or expired.');
+  if (
+    imageLiveAcceptance &&
+    (typeof imageLiveBaseUrl !== 'string' ||
+      !/^https:\/\/api\.deepseek\.com(?:\/v1)?\/?$/u.test(imageLiveBaseUrl))
+  )
+    throw new Error('Live image acceptance requires its explicit pinned provider base URL.');
 
   const cleanupStack = new AsyncCleanupStack();
   const pool = createPostgresPool(databaseUrl);
@@ -558,13 +596,14 @@ export const startShotgunApplication = async (
       ? new PostgresVPImageObservationLedger(pool, imageExecutionRepository)
       : undefined;
     const imageObservationPipeline =
-      imageObservationLedger && imageFakeHttp
+      imageObservationLedger && (imageFakeHttp || imageLiveHttp)
         ? createImageObservationRuntime({
             runtimeProfile: environmentProfile,
             pool,
             storage: assetStorage,
             transformationRepository,
             ledger: imageObservationLedger,
+            ...(imageLiveAcceptance ? { liveAcceptance: imageLiveAcceptance } : {}),
             authorizeSourceInput: async (input) => {
               const security = await resolveOwnerDiscoverySecurity(input.projectId);
               const policy = await standingPolicy.getCurrent(input.projectId);
@@ -585,12 +624,21 @@ export const startShotgunApplication = async (
             },
             imageExecutionResolver: {
               resolve: (snapshot) =>
-                createIsolatedFakeImageExecutionResolver({
-                  runtimeProfile: environmentProfile,
-                  executionResolver: stage4AIExecutionResolver,
-                  vault: credentialVault,
-                  fakeHttp: imageFakeHttp,
-                }).resolve(snapshot),
+                imageLiveAcceptance && imageLiveHttp
+                  ? createIsolatedLiveImageExecutionResolver({
+                      runtimeProfile: environmentProfile,
+                      executionResolver: stage4AIExecutionResolver,
+                      vault: credentialVault,
+                      liveHttp: imageLiveHttp,
+                      liveAcceptance: imageLiveAcceptance,
+                      baseUrl: imageLiveBaseUrl!,
+                    }).resolve(snapshot)
+                  : createIsolatedFakeImageExecutionResolver({
+                      runtimeProfile: environmentProfile,
+                      executionResolver: stage4AIExecutionResolver,
+                      vault: credentialVault,
+                      fakeHttp: imageFakeHttp!,
+                    }).resolve(snapshot),
             },
           })
         : undefined;

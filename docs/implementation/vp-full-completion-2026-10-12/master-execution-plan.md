@@ -198,3 +198,27 @@ post-merge CI38564365458은 기존 TS5 lock test의 연결 종료 직후 asserti
 않았다. 후속 사용자 “처리해”에 따라 실제 backend/lock 종료의 bounded readback을
 추가하고 원래 잠금 assertion을 보존했다. [원인·범위·격리 결과](./ts5-maintenance-backend-exit-correction.md).
 새 follow-up exact-head CI와 별도 merge 승인이 필요하며 운영 전환은 수행하지 않는다.
+
+### 2026-10-15 — 요청된 실행 경계 보정·격리 실AI 인수 완료
+
+후속 “먼저 2번 까지 구현 진행해”의 두 작업 묶음에서 실행 경계 보정과 텍스트
+실제 응답7을 확인했고, 사용자 승인·재개 지시에 따라 이미지 분석1·Ask1도 실제
+application/worker 경로에서 PASS했다. 실행 코드 head는 `627618692`이며 SQL/JSON
+모두 격리 live 종류, 생성 관측은 UNVERIFIED O 참조로 보존된다. 원문 Evidence나
+Fact로 승격하지 않는다. [정확한 범위·이력·검증](./isolated-image-live-acceptance-2026-10-15.md).
+
+기존 가능 UNKNOWN1을 포함한 총10회 상한에 도달해 추가 호출은 STOP했다. 이전
+UNKNOWN·실패·STOP과 동결 자료를 보존했고 운영 앱·worker는 OFF다. 이는 전체 계획의
+Phase1/2나 VP 전체 완료 판정이 아니다. 평가 정답 신뢰성·독립 의미 품질·표준 TS6
+timeout·게시·운영 전환의 남은 Gate를 닫았다고 주장하지 않는다. 추가 실호출,
+push·PR·merge 및 다음 작업 단계는 자동 착수하지 않는다.
+
+### 2026-10-15 — 표준 TS6 timeout 최소 보정
+
+후속 사용자 지시로 TS6의 반복 파일 읽기와 동일 테스트 파일의 반복 AST 파싱을
+계측·보정했다. 전체 소스 바이트 재확인은 매번 유지하며 검증 한 번 안에서만
+읽은 내용을 재사용한다. 기존 5초 제한·assertion·negative case·worker 옵션을
+바꾸지 않은 표준 TS6 전체 실행이 두 번 모두 53/53 PASS했다. 이전 실패 로그는
+보존한다. [원인·보정·최종 검증](./ts6-timeout-correction-2026-10-15.md)에 정확한
+증거와 적용 범위를 기록한다. 로컬 검증이며 Canonical 게시·운영 적용이나 VP
+전체 완료 판정은 아니다.

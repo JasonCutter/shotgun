@@ -13,7 +13,8 @@
     "2026-10-02 URL freshness projection coordinate audit: ten covers[] references were remapped to the same owning methods after checking live functionKey, sourceNeedle, classification, and reachability. Test identities, labels, and frozen v7 source digest remain unchanged. See the 2026-10-02 addendum in docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md.",
     "2026-10-11 VP-05 P0: five existing VP method coordinates remapped with owning method/classification/reachability unchanged; eleven new source candidates audited (three global raw owners, seven lifecycle statements, one concrete expired-execution recovery owner). Added direct regression evidence for the new PROVEN recovery boundary. Validator rules and frozen v2-v7 inputs unchanged. See docs/implementation/vp05-p0-execution-authority-2026-10-11/ts6-coordinate-audit.md.",
     "2026-10-12 VP full completion delegated mechanical audit: 126 inherited transaction owners mapped uniquely by file/class/method/ownership kind with unchanged reachability; three new owners receive qualified DIRECT_BOUNDARY PostgreSQL evidence, including PORT_INFERRED source refresh and PROVEN Frontier ensure/status. New relations are implementation acceptance, not human semantic Gold; frozen v2-v7 and source digest unchanged. See docs/implementation/vp-full-completion-2026-10-12/reliability-ts6-coordinate-audit.md.",
-    "2026-10-14 image-isolated current v8 audit: fifteen inherited SAFE_HELPER coordinates remapped with unchanged qualified grades; one new VP image-ledger append owner is PORT_INFERRED through a typed Port in runtime-test-only assembly. The new direct database concurrency/restart relation resolves to the concrete ledger. Frozen v7 source digest and historical artifacts are unchanged."
+    "2026-10-14 image-isolated current v8 audit: fifteen inherited SAFE_HELPER coordinates remapped with unchanged qualified grades; one new VP image-ledger append owner is PORT_INFERRED through a typed Port in runtime-test-only assembly. The new direct database concurrency/restart relation resolves to the concrete ledger. Frozen v7 source digest and historical artifacts are unchanged.",
+    "2026-10-15 execution-boundary correction: existing Stage4 owner coordinates remapped after lease parameterization; all candidate classifications/order, owner identities, qualified reachability and approved test identities unchanged. No new owner or semantic Gold; frozen v2-v7 unchanged. See live-execution-boundary-correction.md."
   ],
   "records": [
     {
@@ -21,8 +22,8 @@
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 4 provider output acceptance: exact retry is idempotent after durable acceptance",
       "covers": [
-        "raw:adapters/postgres-stage4/src/index.ts:574",
-        "safe:adapters/postgres-stage4/src/index.ts:504"
+        "raw:adapters/postgres-stage4/src/index.ts:580",
+        "safe:adapters/postgres-stage4/src/index.ts:510"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAIProviderCallRepository.acceptOutput",
@@ -32,7 +33,7 @@
       "testEvidenceId": "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 4 provider outcome-unknown: exact retry returns the same safe durable state",
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 4 provider outcome-unknown: exact retry returns the same safe durable state",
-      "covers": ["raw:adapters/postgres-stage4/src/index.ts:735"],
+      "covers": ["raw:adapters/postgres-stage4/src/index.ts:741"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAIProviderCallRepository.markAttemptOutcomeUnknown",
       "path": ["PostgresAIProviderCallRepository.markAttemptOutcomeUnknown"]
@@ -392,7 +393,7 @@
       "testEvidenceId": "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 4 ensure: exact retry converges to the committed provider call",
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 4 ensure: exact retry converges to the committed provider call",
-      "covers": ["safe:adapters/postgres-stage4/src/index.ts:346"],
+      "covers": ["safe:adapters/postgres-stage4/src/index.ts:347"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAIProviderCallRepository.ensure",
       "path": ["PostgresAIProviderCallRepository.ensure"]
@@ -401,7 +402,7 @@
       "testEvidenceId": "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 4 provider claim: reconciles a committed attempt after ACK loss",
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 4 provider claim: reconciles a committed attempt after ACK loss",
-      "covers": ["safe:adapters/postgres-stage4/src/index.ts:440"],
+      "covers": ["safe:adapters/postgres-stage4/src/index.ts:441"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAIProviderCallRepository.claimNextAttempt",
       "path": ["PostgresAIProviderCallRepository.claimNextAttempt"]
@@ -410,7 +411,7 @@
       "testEvidenceId": "test:tests/database/stage-4-postgres.test.ts:does not reclaim terminal failures after restart, but preserves retryable reclaim",
       "file": "tests/database/stage-4-postgres.test.ts",
       "testName": "does not reclaim terminal failures after restart, but preserves retryable reclaim",
-      "covers": ["safe:adapters/postgres-stage4/src/index.ts:699"],
+      "covers": ["safe:adapters/postgres-stage4/src/index.ts:705"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAIProviderCallRepository.failAttempt",
       "path": ["PostgresAIProviderCallRepository.failAttempt"]
@@ -419,7 +420,7 @@
       "testEvidenceId": "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 4 candidate batch persistence: exact retry converges without duplicate candidates",
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 4 candidate batch persistence: exact retry converges without duplicate candidates",
-      "covers": ["safe:adapters/postgres-stage4/src/index.ts:846"],
+      "covers": ["safe:adapters/postgres-stage4/src/index.ts:852"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresCandidateRepository.saveBatch",
       "path": ["PostgresCandidateRepository.saveBatch"]

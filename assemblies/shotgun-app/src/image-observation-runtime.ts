@@ -10,6 +10,7 @@ import {
   executeImageObservation,
   imageObservationTransformationIdentity,
   type ImageObservationExecutionResolverPort,
+  type IsolatedImageLiveAcceptance,
 } from '../../../modules/image-observation-execution/src/index.js';
 import { ShotgunError, stableJson } from '../../../packages/contracts/src/index.js';
 import { VP_IMAGE_OBSERVATION_SCHEMA_V1 } from '../../../packages/contracts/src/vp-image-observation.js';
@@ -24,6 +25,7 @@ export type ImageObservationRuntimeOptions = {
    * or credential resolution belongs in this preflight authorization callback. */
   readonly authorizeSourceInput: (input: Stage3Input) => Promise<void>;
   readonly imageExecutionResolver: ImageObservationExecutionResolverPort;
+  readonly liveAcceptance?: IsolatedImageLiveAcceptance;
   readonly transformationRepository: TransformationRepositoryPort;
   readonly ledger: VPImageObservationLedgerPort;
   readonly pythonExecutable?: string;
@@ -39,9 +41,9 @@ const denied: (message: string) => never = (message) => {
   });
 };
 
-/** Additive image-only assembly path. The factory cannot authorize live egress
- * or activate the production capability catalog. The injected resolver must
- * supply an explicit immutable Fake executor under the runtime-test profile. */
+/** Additive isolated image assembly. Normal capability remains OFF. Live
+ * acceptance requires the separately injected bounded grant; it cannot use
+ * the Fake transport identity or activate a production runtime. */
 export function createImageObservationRuntime(options: ImageObservationRuntimeOptions): {
   runForSourceVersion(
     input: Stage3Input,
@@ -58,6 +60,7 @@ export function createImageObservationRuntime(options: ImageObservationRuntimeOp
   const authorize = options.authorizeSourceInput;
   const resolver = options.imageExecutionResolver,
     resolve = resolver.resolve;
+  const liveAcceptance = options.liveAcceptance;
   const capturedResolver: ImageObservationExecutionResolverPort = {
     resolve: (snapshot) => resolve.call(resolver, snapshot),
   };
@@ -137,6 +140,7 @@ export function createImageObservationRuntime(options: ImageObservationRuntimeOp
           runtimeProfile: 'runtime-test',
           repository: executionRepository,
           resolver: capturedResolver,
+          ...(liveAcceptance ? { liveAcceptance } : {}),
         },
       );
       if (record.state === 'OUTCOME_UNKNOWN' || record.state === 'PROVIDER_RUNNING')

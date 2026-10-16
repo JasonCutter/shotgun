@@ -57,7 +57,7 @@ const makeQuery = () =>
   });
 
 describe('Stage 4 provider module terminal replay guard', () => {
-  it('gives durable structured extraction the bounded five-minute provider deadline', () => {
+  it('gives durable structured extraction the bounded fifteen-minute provider deadline', () => {
     const module = createAIProviderModule(new InMemoryAIProviderCallRepository(), {
       identity: {
         provider: 'test-provider',
@@ -74,6 +74,51 @@ describe('Stage 4 provider module terminal replay guard', () => {
       module.handlers.queries.find((handler) => handler.messageType === 'GenerateStructured')
         ?.timeoutMs,
     ).toBe(DEFAULT_CANDIDATE_EXTRACTION_TIMEOUT_MS);
+  });
+
+  it('records an uncertain transport outcome and never recalls the provider on replay', async () => {
+    const repository = new InMemoryAIProviderCallRepository();
+    const provider: AIProviderAdapterPort = {
+      identity: {
+        provider: 'test-provider',
+        adapterVersion: 'test-provider-v1',
+        model: 'test-model',
+        dataPolicyVersion: 'test-policy-v1',
+      },
+      generateStructured: vi.fn(async () => {
+        throw new ShotgunError({
+          code: 'OUTCOME_UNKNOWN',
+          safeMessage: 'The response was lost after dispatch.',
+          module: 'stage4-provider-module-test',
+          operation: 'generate-structured',
+          retryable: false,
+        });
+      }),
+    };
+    const kernel = new ShotgunKernel(new InProcessTransport());
+    kernel.register(
+      createAIProviderModule(repository, provider, {
+        allowPrivate: false,
+        allowRestricted: false,
+        maxAttempts: 2,
+      }),
+    );
+    await kernel.start();
+
+    await expect(kernel.connector.query(makeQuery())).rejects.toMatchObject({
+      code: 'OUTCOME_UNKNOWN',
+    });
+    await expect(kernel.connector.query(makeQuery())).rejects.toMatchObject({
+      code: 'OUTCOME_UNKNOWN',
+    });
+    expect(provider.generateStructured).toHaveBeenCalledTimes(1);
+    expect(
+      await repository.findByRequestId(root.projectId!, 'terminal-module-replay-request'),
+    ).toMatchObject({
+      state: 'OUTCOME_UNKNOWN',
+      attempts: [{ status: 'outcome_unknown' }],
+    });
+    await kernel.shutdown();
   });
 
   it('does not resolve or invoke a provider again after a durable terminal failure', async () => {

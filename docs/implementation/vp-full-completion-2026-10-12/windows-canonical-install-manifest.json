@@ -1,0 +1,106 @@
+{
+  "record": "WINDOWS_CANONICAL_SOURCE_INSTALL_20261016",
+  "status": "WINDOWS_CANONICAL_DEPENDENCY_INSTALL_AND_BUILD_PASS",
+  "canonicalHead": "d5503922052320ccb9c7b08500911ccc1d8313d8",
+  "canonicalTree": "82c3f8b17ed15e6590c8dba089a792eadfa1bcc3",
+  "sourceFiles": 874,
+  "sourceManifestDigest": "95725d75dbacbf264a38f0622f0d673bd600b799aa7b763e3886ea91b0e10031",
+  "actualGitHubMain": true,
+  "normalApplicationStarted": false,
+  "databaseCalls": 0,
+  "realProviderCalls": 0,
+  "initialFailurePreserved": true,
+  "certifiedSemanticReferencesCreated": 0,
+  "artifacts": [
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\verify-install.cjs",
+      "bytes": 10104,
+      "sha256": "ccfda080e4ac4479cc50c89c0905d971a1a71cfeab4f803f978e99650a7adde7"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\failure.json",
+      "bytes": 3523,
+      "sha256": "28ff16ad7241e6cf67f3b2d8c56ce3a541076c5e86a5a8c76ab4d93f9cb17db2"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\install-progress.log",
+      "bytes": 613,
+      "sha256": "aa0dbe1c0d7ee310dd5840f6ac731cb031bd563d546bea03a68c033bd8ac49e9"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\tree-inventory.log",
+      "bytes": 264489,
+      "sha256": "ecb94198bffad93fadde06b6c3c37cbdae7b77ae5f4e2e1e45f4d8324644088b"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\verify-install.cjs",
+      "bytes": 10109,
+      "sha256": "69ae81c4d966e35544e23727e95134b9bcfef8a0753da72d02bd6194e9184b4b"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\install-result.json",
+      "bytes": 9423,
+      "sha256": "886c04598c05996b4d229163097745a0032f04adcb77a477e80c4fa4a630c292"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\source-manifest.json",
+      "bytes": 256600,
+      "sha256": "753ab5d8a1682a958b75246bc267dceb73151a2c9759440ab3f769fe3d058506"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\steps.json",
+      "bytes": 7582,
+      "sha256": "16f951b459c99f6098089cbe8b75426bf42971e0addfbf843d23f0a2218f4f4e"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\install-progress.log",
+      "bytes": 1445,
+      "sha256": "aca9abfa336425435e6cdff22705e910be3cfc560f3305fa74dd696507add941"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\clone.log",
+      "bytes": 116,
+      "sha256": "bc86b9b2c744ea84e5c54b7008422c51b34a66379f0f7545f6ac64d45ba379f5"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\head.log",
+      "bytes": 41,
+      "sha256": "d4449794d7b4930b3416415f9a1c34e3a26da7a09bfbae3a54699fa0389d994d"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\tree.log",
+      "bytes": 41,
+      "sha256": "0a03ce8a79e7a8bdd6773b19c780e4efd080a0c0d6990beee1fa3ef6915dc4b9"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\sparse-select.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\npm-ci.log",
+      "bytes": 120,
+      "sha256": "120ed8d9d071e4d6d6ae35e70dd94c81a75cb4933d698e977fc17dd99fab67b7"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\bootstrap-help.log",
+      "bytes": 341,
+      "sha256": "83540f15e9af3e10f087d2c9e1049b6ac5a21971b7662f83249406b7a15cce9a"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\frontend-typecheck.log",
+      "bytes": 130,
+      "sha256": "1977241b9aeddf30282e6790b90900c4e76c961cb1ef6595c93249a7796e4885"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\frontend-build.log",
+      "bytes": 1630,
+      "sha256": "58b8b94e4ba5fca58d3824de5477d0417e92428f0d9a75025e127b85e3809a42"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\windows-canonical-d5503922-20261016\\run2\\clean.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

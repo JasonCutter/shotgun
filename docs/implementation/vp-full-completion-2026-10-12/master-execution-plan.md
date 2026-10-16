@@ -259,3 +259,19 @@ null context는 현행 동일 문장 중복 생략 규칙과 일치한다. 별�
 [잔여 Gate 재분류](./remaining-gates-review-2026-10-16.md)에 기록한다.
 PR390 exact head/필수 CI 성공은 유지하며 merge는 별도 승인이다. 이 후속 기록은
 로컬 변경이고 운영 설치/reboot·독립 의미 검증의 남은 조건을 대체하지 않는다.
+
+### 2026-10-16 — PR390 Canonical 완료와 Windows 소스 설치
+
+후속 사용자 승인에 따라 PR390은 main `d5503922052320ccb9c7b08500911ccc1d8313d8`에
+병합됐다. Tree82c3f8b1은 승인 head ba655의 tree와 같고, main 사후
+[CI38844117150](https://github.com/JasonCutter/shotgun/actions/runs/38844117150)의
+Quality·Frontend·Required Gates가 모두 SUCCESS다. 앞 절의 merge 대기는
+당시 이력이며 이번 승인·병합으로 해소됐다.
+
+추가 지시로 [Windows 실제 Canonical 설치 검증](./windows-canonical-install-2026-10-16.md)을
+진행했다. GitHub main의 runtime874개를 exact Git blob으로 확인하고 새 npm
+설치·bootstrap 도움말·Frontend 타입/빌드를 통과했다. 최초 auditor의 이전 CI
+파일 수875 가정 실패는 보존하며 실제 tracked tree의 exact874개로 대조했다.
+Docker 엔진 unavailable이므로 DB/앱·worker는 시작하지 않았다. 청구 후속
+문서와 이 설치 증거는 새 로컬 변경이며 게시·merge 승인과 구분한다.
+외부 의미 검증·설치본의 격리 제품 경로·운영 설치/reboot Gate는 남는다.

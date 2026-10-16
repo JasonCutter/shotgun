@@ -52,3 +52,18 @@
 새 provider/DB 호출, 운영 변경, 과거 재채점, Gold 승격은 모두0이다. `remaining-gates-review-20261016/context-review.json`에 오프라인 대조와 source digest를 보존했다. Text sealed131개 항목의 hash/크기도 재확인했다. 기존 청구 packet `billing-export-review-20261016`과 publication packet은 덮어쓰지 않는다.
 
 OSS·Port 변경 및 새 dependency는 없다. 기존 PostgreSQL relation projector/AI adapter, A2 provenance, 실행 accounting과 원본 capture를 재사용했다. 기존 OSS integration 결정의 범위를 바꾸지 않아 재선정·새 runtime·migration·rollback 작업은 필요하지 않다. 이번 변경은 문서 두 파일이며 rollback은 이 후속 문서와 Master Plan의 추가 기록만 되돌리는 것이다. 기존 승인·동결 이력은 삭제하지 않는다.
+
+## 5. 후속 Canonical 게시 및 Windows 검증
+
+위의 PR390 Draft/merge 대기는 작성 당시 기록이다. 사용자 exact-head 승인으로
+PR390은 main `d5503922052320ccb9c7b08500911ccc1d8313d8`에 병합됐고 승인
+tree82c3f8b1과 동일하다. [사후 CI38844117150](https://github.com/JasonCutter/shotgun/actions/runs/38844117150)의
+Quality·Frontend·Required Gates가 모두 SUCCESS다. 문서 게시 Gate의 해당
+merge 대기는 해소됐다. 이 후속 로컬 문서나 아래 설치 검증이 그 merge에
+포함됐다는 뜻은 아니다.
+
+별도 [Windows Canonical 소스 설치·빌드](./windows-canonical-install-2026-10-16.md)에서
+실제 main의 runtime874개/Git blob, 새 npm 설치, bootstrap 도움말 및 Frontend
+타입·빌드를 검증했다. Docker가 꺼져 있어 DB/application 실행은 보류했다.
+독립 의미 검증, 이번 설치본의 격리 제품 실행 및 승인된 운영 설치/reboot는
+여전히 남고 전체 인수 판정은 변경하지 않는다.

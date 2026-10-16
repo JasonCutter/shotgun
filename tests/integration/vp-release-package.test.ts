@@ -131,7 +131,7 @@ console.log(JSON.stringify({version:RELATION_MEASUREMENT_VERSION,emptyDenominato
 `,
     );
     expect(JSON.parse(run([entry], consumer))).toEqual({
-      version: 'VP05_RELATION_MEASUREMENT_0.1',
+      version: 'VP05_RELATION_MEASUREMENT_0.2',
       emptyDenominator: null,
       shotgunApplicationInstalled: false,
     });

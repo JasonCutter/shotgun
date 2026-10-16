@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { Pool } from 'pg';
 
 import {
@@ -69,18 +69,52 @@ describe('ADR-155 post-handler outcome-unknown conformance', () => {
     const jobId = randomUUID();
     const dedup = new PostgresDedupStore(pool);
     const jobs = new PostgresJobRuntime(pool, 1, 0, {
-      leaseDurationMs: 150,
       heartbeatIntervalMs: 40,
     });
+    // Use the production lease duration; observe real renewals instead of relying
+    // on a shared CI runner scheduling every heartbeat within a 150 ms lease.
+    let releaseHandler: () => void = () => undefined;
+    const repeatedRenewals = new Promise<void>((resolve) => {
+      releaseHandler = resolve;
+    });
+    let renewals = 0;
+    let handlerFinished = false;
+    const renew = jobs.renew.bind(jobs);
+    const observedRenew = vi.spyOn(jobs, 'renew').mockImplementation(async (input) => {
+      const before = await pool.query<{ lease_expires_at: Date }>(
+        'SELECT lease_expires_at FROM connector.jobs WHERE job_id=$1',
+        [jobId],
+      );
+      const renewed = await renew(input);
+      expect(renewed).toBe(true);
+      const after = await pool.query<{ status: string; lease_expires_at: Date }>(
+        'SELECT status, lease_expires_at FROM connector.jobs WHERE job_id=$1',
+        [jobId],
+      );
+      expect(handlerFinished).toBe(false);
+      expect(after.rows[0]?.status).toBe('running');
+      expect(after.rows[0]!.lease_expires_at.getTime()).toBeGreaterThan(
+        before.rows[0]!.lease_expires_at.getTime(),
+      );
+      renewals += 1;
+      if (renewals === 3) releaseHandler();
+      return renewed;
+    });
+    let calls = 0;
 
     try {
       const began = await dedup.begin({ ...identity, jobId });
       expect(began.kind).toBe('ACQUIRED');
       const execution = await jobs.run(identity, randomUUID(), async (_attempt, signal) => {
+        calls += 1;
         expect(signal.aborted).toBe(false);
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await repeatedRenewals;
+        expect(signal.aborted).toBe(false);
+        handlerFinished = true;
         return { accepted: true };
       });
+      expect(renewals).toBeGreaterThanOrEqual(3);
+      expect(calls).toBe(1);
       expect(execution.result).toEqual({ accepted: true });
       expect(execution.job.status).toBe('succeeded');
       const row = await pool.query<{ status: string; lease_expires_at: Date | null }>(
@@ -90,6 +124,7 @@ describe('ADR-155 post-handler outcome-unknown conformance', () => {
       expect(row.rows[0]?.status).toBe('succeeded');
       expect(row.rows[0]?.lease_expires_at).toBeNull();
     } finally {
+      observedRenew.mockRestore();
       await cleanup(projectId);
     }
   });

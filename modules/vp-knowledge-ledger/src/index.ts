@@ -37,6 +37,12 @@ export type VPRelationJobStorePort = {
   enqueueCurrentPairs(policyRevision: string, limit?: number): Promise<number>;
   claimNext(policyRevision: string): Promise<VPRelationJob | undefined>;
   completeDecision(input: VPRelationJobDecision): Promise<boolean>;
+  /** Opt-in terminal output recorded by a policy-specific execution repository; never an edge. */
+  completeRecordedNoEdge?(input: {
+    readonly jobId: string;
+    readonly leaseToken: string;
+    readonly outcome: VPRecordedNoEdgeOutcome;
+  }): Promise<boolean>;
   readDecisionOutcome(input: {
     readonly jobId: string;
     readonly leaseToken: string;
@@ -55,6 +61,8 @@ export type VPRelationJobStorePort = {
 };
 
 export type VPRelationEgressPolicy = (job: VPRelationJob) => Promise<boolean>;
+
+export type VPRecordedNoEdgeOutcome = 'NO_RELATION' | 'MODEL_ABSTAINED' | 'WITHHELD' | 'INVALID';
 
 /** Local Port keeps the ledger independent of the decision module's runtime. */
 export type VPRelationDecisionPort = {
@@ -97,6 +105,7 @@ export type VPRelationDecisionPort = {
         readonly reason: 'NO_AUTHORIZED_PROVIDER' | 'PROVIDER_FAILED' | 'INSUFFICIENT_EVIDENCE';
       }
     | { readonly status: 'OUTCOME_UNKNOWN' }
+    | { readonly status: 'RECORDED_NO_EDGE'; readonly outcome: VPRecordedNoEdgeOutcome }
   >;
 };
 
@@ -117,7 +126,13 @@ export class VPRelationJobWorker {
   ) {}
 
   async dispatchOnce(): Promise<
-    'EMPTY' | 'DECIDED' | 'UNRESOLVED' | 'RETRYING' | 'FAILED' | 'OUTCOME_UNKNOWN'
+    | 'EMPTY'
+    | 'DECIDED'
+    | 'UNRESOLVED'
+    | 'RETRYING'
+    | 'FAILED'
+    | 'OUTCOME_UNKNOWN'
+    | VPRecordedNoEdgeOutcome
   > {
     if (this.candidateMode === 'FRONTIER') {
       if (!this.jobs.ensureCurrentFrontier) throw new Error('FRONTIER_STORE_REQUIRED');
@@ -166,6 +181,29 @@ export class VPRelationJobWorker {
         execution: { jobId: job.jobId, leaseToken: job.leaseToken },
       });
       if (result.status === 'OUTCOME_UNKNOWN') return 'OUTCOME_UNKNOWN';
+      if (result.status === 'RECORDED_NO_EDGE') {
+        const finish = this.jobs.completeRecordedNoEdge;
+        if (!finish)
+          throw new Error('A recorded no-edge outcome requires its policy-specific store.');
+        const completion = {
+          jobId: job.jobId,
+          leaseToken: job.leaseToken,
+          outcome: result.outcome,
+        };
+        try {
+          return (await finish.call(this.jobs, completion)) ? result.outcome : 'OUTCOME_UNKNOWN';
+        } catch (error) {
+          if (
+            typeof error !== 'object' ||
+            error === null ||
+            !('code' in error) ||
+            error.code !== 'OUTCOME_UNKNOWN'
+          )
+            throw error;
+          // Idempotent authoritative readback/finalization only. Never ask the provider again.
+          return (await finish.call(this.jobs, completion)) ? result.outcome : 'OUTCOME_UNKNOWN';
+        }
+      }
       // Directional relation types must identify which assertion supports or
       // qualifies the other; the pair IDs themselves are sorted for identity.
       if (

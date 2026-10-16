@@ -1,6 +1,7 @@
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import type { CanonicalSnapshotPort } from '../../../modules/comparison/src/index.js';
+import type { FrontendKnowledgeDraftCanonicalCommitPort } from '../../../modules/frontend-knowledge-draft/src/product-api.js';
 import type {
   CanonicalCommitWrite,
   CanonicalCommitV2Write,
@@ -215,7 +216,10 @@ const relationAwareDigest = (
   );
 
 export class PostgresCanonicalKnowledgeRepository
-  implements CanonicalKnowledgeRepositoryPort, CanonicalSnapshotPort
+  implements
+    CanonicalKnowledgeRepositoryPort,
+    CanonicalSnapshotPort,
+    FrontendKnowledgeDraftCanonicalCommitPort
 {
   constructor(
     private readonly pool: Pool,

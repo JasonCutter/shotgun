@@ -1,9 +1,10 @@
 import type { MetricValue } from '../../quality-evaluation/src/types.js';
 
-export const RELATION_MEASUREMENT_VERSION = 'VP05_RELATION_MEASUREMENT_0.1' as const;
+export const RELATION_MEASUREMENT_VERSION = 'VP05_RELATION_MEASUREMENT_0.2' as const;
 export const RELATION_TARGET_REVISIONS = {
   V6: 'vp-deepseek-relation-v6-evidence-context',
   V11: 'vp-deepseek-relation-v11-contractual-protocol-and-physical-generalization',
+  V6_EXPLICIT_NEGATIVE_ISOLATED: 'vp-relation-v6-explicit-negative-isolated-v1',
 } as const;
 export type RelationTarget = keyof typeof RELATION_TARGET_REVISIONS;
 export type RelationChoice =
@@ -144,7 +145,7 @@ export type RelationObservation = {
     | { readonly status: 'WITHHELD'; readonly reason: string }
     | { readonly status: 'NOT_REACHED'; readonly reason: string };
 };
-export type PositiveMetrics = {
+export type TupleMetrics = {
   readonly counts: { readonly tp: number; readonly fp: number; readonly fn: number };
   readonly precision: MetricValue;
   readonly recall: MetricValue;
@@ -152,6 +153,46 @@ export type PositiveMetrics = {
   readonly criticalRecall: MetricValue;
   readonly conditionalDirectionAccuracy: MetricValue;
   readonly negativeFalseLinkRate: MetricValue;
+};
+export type PartialAssessmentMetric = {
+  /** Unknown TP count is not zero. */
+  readonly numerator: number | null;
+  readonly denominator: number;
+  readonly value: number | null;
+};
+export type MetricBounds = { readonly lower: number | null; readonly upper: number | null };
+export type PositiveMetrics = Omit<
+  TupleMetrics,
+  'precision' | 'recall' | 'f1' | 'criticalRecall'
+> & {
+  /** Counts cover confirmed outcomes only, not an imputed classification of unknown warrants. */
+  readonly assessment: {
+    readonly scope: 'ALL_ELIGIBLE_DETERMINATE_TASKS';
+    readonly complete: boolean;
+    readonly unresolvedWarrants: number;
+    readonly assessedWarrantResponses: number;
+    readonly noPredictionPositiveMisses: number;
+  };
+  readonly precision: PartialAssessmentMetric;
+  readonly recall: PartialAssessmentMetric;
+  readonly f1: PartialAssessmentMetric;
+  readonly criticalRecall: PartialAssessmentMetric;
+  readonly bounds: {
+    readonly precision: MetricBounds;
+    readonly recall: MetricBounds;
+    readonly f1: MetricBounds;
+    readonly criticalRecall: MetricBounds;
+  };
+};
+export type OperationalRelationMetrics = {
+  readonly scope: 'ALL_SCHEDULED_TASKS';
+  readonly scheduledTasks: number;
+  readonly responseTasks: number;
+  readonly structureValidity: MetricValue;
+  readonly modelAbstentionRate: MetricValue;
+  readonly rawTupleStability: MetricValue;
+  readonly strictAllRunStability: MetricValue;
+  readonly adoptionStateStability: MetricValue;
 };
 export type RelationEvaluationReport = {
   readonly version: typeof RELATION_MEASUREMENT_VERSION;
@@ -164,6 +205,14 @@ export type RelationEvaluationReport = {
   readonly coverage: Readonly<Record<string, MetricValue>>;
   readonly raw: PositiveMetrics;
   readonly adopted: PositiveMetrics;
+  /** Only kind/direction agreement with this lane's references, never warrant certification. */
+  readonly tupleOnly: { readonly raw: TupleMetrics; readonly adopted: TupleMetrics };
+  readonly semanticMetricScope: 'ELIGIBLE_REFERENCES_ONLY';
+  readonly operational: OperationalRelationMetrics;
+  readonly warrantRejections: readonly {
+    readonly taskId: string;
+    readonly reasons: readonly string[];
+  }[];
   readonly kindCorrectness: MetricValue;
   readonly explicitNegativeCorrectness: MetricValue;
   readonly modelAbstentionRate: MetricValue;

@@ -1,5 +1,15 @@
 # ADR-173 — 제품 우선 개발 전략과 평가 신뢰성 경계
 
+## 2026-10-16 사용자 승인 후속
+
+사용자가 [NO_RELATION 격리 구현과 인증/제품 인수 범위 정비](../add/vp05-evaluation-trust/relation-negative-and-acceptance-policy-draft.md)를
+승인했다. 실제 제품 질문의 원문·인용·최신성·충돌/조건·권한·복구 증거를
+인수 기준으로 사용하고 인증 Gold·의미 정확도 수치는 별도 증거 수준으로 유지한다.
+모든 관계를 인간에게 개별 승인받는 일반 제품 흐름은 만들지 않는다. 인증
+분모0은 N/A이고 미해결 필수 제품/안전/적용 품질 기준은 계속 blocker다.
+신규7종 정책은 명시적 Fake-only 격리 경로에 한정하며 현재 앱의 v6/0.9,
+동결 결과·예산/실행 권위·운영 적용 및 게시 승인 경계를 유지한다.
+
 - Status: **ACCEPTED — USER decision, 2026-10-10**
 - Decision owner: USER (Project owner)
 - Acceptance authority: 사용자의 “개발 전략 ADR 승격 및 기존 결정 정합성 재정비” 요청

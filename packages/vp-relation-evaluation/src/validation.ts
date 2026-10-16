@@ -28,7 +28,9 @@ const unique = (values: readonly string[], label: string): void =>
 
 export const validateTuple = (tuple: RelationTuple, target: RelationTarget): void => {
   assert(
-    choices.includes(tuple.choice) || (target === 'V11' && tuple.choice === 'NO_RELATION'),
+    choices.includes(tuple.choice) ||
+      ((target === 'V11' || target === 'V6_EXPLICIT_NEGATIVE_ISOLATED') &&
+        tuple.choice === 'NO_RELATION'),
     `choice ${tuple.choice} is not in ${target}`,
   );
   assert(
@@ -145,7 +147,7 @@ export const validateRelationEvaluation = (
   observations: readonly RelationObservation[],
 ): void => {
   assert(plan.version === RELATION_MEASUREMENT_VERSION, 'measurement revision mismatch');
-  assert(plan.target === 'V6' || plan.target === 'V11', 'target invalid');
+  assert(Object.hasOwn(RELATION_TARGET_REVISIONS, plan.target), 'target invalid');
   assert(['CERTIFICATION', 'DIAGNOSTIC', 'SYNTHETIC_CONTRACT'].includes(plan.lane), 'lane invalid');
   assert(['EC_RUNTIME_2000_V1', 'CLAIM_ONLY_V1'].includes(plan.inputProfile), 'profile invalid');
   unique(

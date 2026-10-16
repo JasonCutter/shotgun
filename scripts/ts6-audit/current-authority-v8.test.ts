@@ -72,10 +72,170 @@ describe('T3-1 current authority and v8 lineage', () => {
     ).toBe(true);
   }, 120_000);
 
+  it('keeps the explicit-negative no-edge finalizer outside normal app reachability', () => {
+    const owner = buildAuditShape(ROOT).boundaries.find(
+      (boundary) =>
+        boundary.file === 'adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts' &&
+        boundary.method === 'completeRecordedNoEdge',
+    );
+    expect(owner).toBeDefined();
+    expect(owner?.productionReachability).toEqual({ status: 'TEST_ONLY_OR_DEAD', callers: [] });
+    expect(loadV8().regressionEvidence).toContainEqual(
+      expect.objectContaining({
+        file: 'tests/database/vp-explicit-negative-isolated.database.test.ts',
+        entrySymbol: 'completeRecordedNoEdge',
+        coverageKind: 'DIRECT_BOUNDARY',
+        covers: [owner!.boundaryId],
+      }),
+    );
+  }, 120_000);
+
+  it('binds generic execution calls to the repository Port instead of the output value', () => {
+    const audit = buildAuditShape(ROOT);
+    for (const method of ['claim', 'storeOutput', 'markOutcomeUnknown']) {
+      const owner = audit.boundaries.find(
+        (row) =>
+          row.file === 'adapters/vp-knowledge-postgres/src/relation-jobs.ts' &&
+          row.method === method,
+      );
+      expect(owner).toBeDefined();
+      expect(owner!.productionReachability.callers).toContainEqual(
+        expect.objectContaining({
+          file: 'adapters/vp-global-provider-budget-postgres/src/execution-boundary.ts',
+          receiverType: 'ExecutionBoundRelationLedger',
+          bindingPort: 'ExecutionBoundRelationLedger',
+          evidenceGrade: 'PORT_INFERRED',
+        }),
+      );
+      expect(
+        owner!.productionReachability.callers.some((caller) => caller.receiverType === 'Output'),
+      ).toBe(false);
+    }
+  }, 120_000);
+
+  it('binds the existing Frontend Canonical writer through its explicit implemented Port', () => {
+    const owner = buildAuditShape(ROOT).boundaries.find(
+      (row) =>
+        row.symbol === 'PostgresCanonicalKnowledgeRepository' &&
+        row.method === 'commitFrontendDraft',
+    );
+    expect(owner?.productionReachability.status).toBe('PORT_INFERRED');
+    expect(owner?.productionReachability.callers).toContainEqual(
+      expect.objectContaining({
+        file: 'modules/frontend-knowledge-draft/src/product-api.ts',
+        receiverType: 'FrontendKnowledgeDraftCanonicalCommitPort',
+        bindingPort: 'FrontendKnowledgeDraftCanonicalCommitPort',
+        evidenceGrade: 'PORT_INFERRED',
+      }),
+    );
+  }, 120_000);
+
+  it.each([
+    { field: 'receiverType', replacement: 'Output', code: 'CALLER_RECEIVER_TYPE_DRIFT' },
+    { field: 'bindingPort', replacement: 'Output', code: 'CALLER_BINDING_PORT_DRIFT' },
+    { field: 'bindingKind', replacement: 'DIRECT', code: 'CALLER_BINDING_KIND_DRIFT' },
+  ] as const)(
+    'rejects a forged generic $field even when site and grade are unchanged',
+    ({ field, replacement, code }) => {
+      const corpus = loadV8();
+      const mutated: Corpus = {
+        ...corpus,
+        transactionBoundaries: corpus.transactionBoundaries.map((owner) =>
+          owner.file === 'adapters/vp-knowledge-postgres/src/relation-jobs.ts' &&
+          owner.method === 'claim'
+            ? {
+                ...owner,
+                productionReachability: {
+                  ...owner.productionReachability,
+                  callers: owner.productionReachability.callers.map((caller) =>
+                    caller.file ===
+                    'adapters/vp-global-provider-budget-postgres/src/execution-boundary.ts'
+                      ? { ...caller, [field]: replacement }
+                      : caller,
+                  ),
+                },
+              }
+            : owner,
+        ),
+      };
+      expect(validateCorpus(mutated, ROOT).issues.map((issue) => issue.code)).toContain(code);
+    },
+    120_000,
+  );
+
   it('validates the v8 lineage against live AST and regression evidence authorities', () => {
     const result = validateCorpus(loadV8(), ROOT);
     expect(result.valid).toBe(true);
     expect(result.issues).toEqual([]);
+  }, 120_000);
+
+  it('rejects replacing distinct repeated calls with duplicate evidence for one site', () => {
+    const corpus = loadV8();
+    const owner = corpus.transactionBoundaries.find((row) =>
+      row.productionReachability.callers.some((caller, index, callers) =>
+        callers
+          .slice(index + 1)
+          .some(
+            (other) =>
+              other.file === caller.file &&
+              other.callNeedle === caller.callNeedle &&
+              other.line !== caller.line,
+          ),
+      ),
+    )!;
+    expect(owner).toBeDefined();
+    const callers = [...owner.productionReachability.callers];
+    const index = callers.findIndex((caller, position) =>
+      callers
+        .slice(position + 1)
+        .some(
+          (other) =>
+            other.file === caller.file &&
+            other.callNeedle === caller.callNeedle &&
+            other.line !== caller.line,
+        ),
+    );
+    const first = callers[index]!;
+    const duplicateIndex = callers.findIndex(
+      (caller, position) =>
+        position > index && caller.file === first.file && caller.callNeedle === first.callNeedle,
+    );
+    callers[duplicateIndex] = first;
+    const mutated: Corpus = {
+      ...corpus,
+      transactionBoundaries: corpus.transactionBoundaries.map((row) =>
+        row === owner
+          ? { ...row, productionReachability: { ...row.productionReachability, callers } }
+          : row,
+      ),
+    };
+    expect(validateCorpus(mutated, ROOT).issues.map((issue) => issue.code)).toContain(
+      'CALLER_SITE_DUPLICATE',
+    );
+  }, 120_000);
+
+  it('rejects a forged caller line even when its expression and binding are unchanged', () => {
+    const corpus = loadV8();
+    const owner = corpus.transactionBoundaries.find(
+      (row) => row.productionReachability.callers.length,
+    )!;
+    const mutated: Corpus = {
+      ...corpus,
+      transactionBoundaries: corpus.transactionBoundaries.map((row) =>
+        row === owner
+          ? {
+              ...row,
+              productionReachability: {
+                ...row.productionReachability,
+                callers: row.productionReachability.callers.map((caller, index) =>
+                  index === 0 ? { ...caller, line: (caller.line ?? 0) + 100000 } : caller,
+                ),
+              },
+            }
+          : row,
+      ),
+    };
+    expect(validateCorpus(mutated, ROOT).issues.map((issue) => issue.code)).toContain('CALLER_SET');
   }, 120_000);
 
   it('rejects caller grade drift with its specific error code', () => {

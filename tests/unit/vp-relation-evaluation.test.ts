@@ -9,6 +9,7 @@ import {
   RELATION_MEASUREMENT_VERSION,
   RELATION_TARGET_REVISIONS,
   validateRelationEvaluation,
+  warrantAssessmentSubject,
 } from '../../packages/vp-relation-evaluation/src/index.js';
 import type {
   AllowedRelation,
@@ -202,7 +203,7 @@ describe('VP relation measurement synthetic contract only', () => {
     expect(report.raw.precision.value).toBeNull();
     expect(report.raw.recall.value).toBeNull();
     expect(report.raw.counts.fn).toBe(0);
-    expect(report.coverage.rawFullTupleScorable!.value).toBe(0);
+    expect(report.coverage.rawOutcomeDecidable!.value).toBe(0);
     expect(report.coverage.rawConfirmedPositiveYield!.value).toBe(0);
     expect(report.raw.conditionalDirectionAccuracy.value).toBeNull();
   });
@@ -586,4 +587,265 @@ describe('VP relation measurement synthetic contract only', () => {
     expect(result.criticalRecall.value).toBeNull();
     expect(result.exclusions[0]?.reasons).toContain('REFERENCE_NOT_EXTERNALLY_VERIFIED');
   });
+  it('reports partial full-tuple quality as N/A and separates 99/100 kind-direction agreement', () => {
+    const entries = Array.from({ length: 100 }, (_, index) => reference(`mixed-${index}`));
+    const outputs = entries.map((entry, index) => ({
+      ...observation(entry, index === 99 ? { choice: 'CONTRADICTS', direction: 'NONE' } : supports),
+      warrant: { status: 'NOT_OBSERVED' },
+    })) as RelationObservation[];
+    const report = evaluateRelationObservations(plan(entries), outputs);
+    expect(report.raw.precision).toEqual({ numerator: null, denominator: 100, value: null });
+    expect(report.raw.recall).toEqual({ numerator: null, denominator: 100, value: null });
+    expect(report.raw.f1).toEqual({ numerator: null, denominator: 200, value: null });
+    expect(report.raw.criticalRecall.value).toBeNull();
+    expect(report.raw.assessment).toEqual({
+      scope: 'ALL_ELIGIBLE_DETERMINATE_TASKS',
+      complete: false,
+      unresolvedWarrants: 99,
+      assessedWarrantResponses: 0,
+      noPredictionPositiveMisses: 0,
+    });
+    expect(report.raw.counts).toEqual({ tp: 0, fp: 1, fn: 1 });
+    expect(report.raw.bounds).toEqual({
+      precision: { lower: 0, upper: 0.99 },
+      recall: { lower: 0, upper: 0.99 },
+      f1: { lower: 0, upper: 0.99 },
+      criticalRecall: { lower: 0, upper: 0.99 },
+    });
+    expect(report.tupleOnly.raw.counts).toEqual({ tp: 99, fp: 1, fn: 1 });
+    expect(report.tupleOnly.raw.precision.value).toBe(0.99);
+    expect(report.tupleOnly.raw.recall.value).toBe(0.99);
+    expect(report.tupleOnly.raw.conditionalDirectionAccuracy).toEqual({
+      numerator: 99,
+      denominator: 99,
+      value: 1,
+    });
+    expect(report.counts.rawOutcomeUndecidable).toBe(99);
+    expect(report.coverage.rawConfirmedPositiveYield!.value).toBe(0);
+  });
+  it('keeps a withheld required relation as a known miss without claiming its warrant was assessed', () => {
+    const entry = reference();
+    const report = evaluateRelationObservations(plan([entry]), [
+      {
+        ...observation(entry),
+        warrant: { status: 'NOT_OBSERVED' },
+        adoption: { status: 'WITHHELD', reason: 'CHOICE_PROBABILITY_BELOW_THRESHOLD' },
+      },
+    ]);
+    expect(report.raw.recall.value).toBeNull();
+    expect(report.tupleOnly.raw.recall.value).toBe(1);
+    expect(report.adopted.counts).toEqual({ tp: 0, fp: 0, fn: 1 });
+    expect(report.adopted.recall.value).toBe(0);
+    expect(report.adopted.precision.value).toBeNull();
+    expect(report.adopted.assessment.assessedWarrantResponses).toBe(0);
+    expect(report.adopted.assessment.noPredictionPositiveMisses).toBe(1);
+    expect(report.coverage.adoptedOutcomeDecidable!.value).toBe(1);
+    expect(report.coverage.warrantAssessment!.value).toBe(0);
+    expect(report.counts.assessedWarrantResponses).toBe(0);
+  });
+  it('excludes ineligible references from primary stability and abstention while retaining operational evidence', () => {
+    const entry = { ...reference('unverified'), assurance: { status: 'CANDIDATE' } } as const;
+    const outputs = [1, 2].map((run) => ({
+      ...observation(entry, unresolved, run),
+      warrant: { status: 'NOT_OBSERVED' },
+    })) as RelationObservation[];
+    const report = evaluateRelationObservations(
+      { ...plan([entry], 2), lane: 'CERTIFICATION' },
+      outputs,
+    );
+    expect(report.semanticMetricScope).toBe('ELIGIBLE_REFERENCES_ONLY');
+    expect(report.counts.eligibleReferences).toBe(0);
+    expect(report.modelAbstentionRate.value).toBeNull();
+    expect(report.coverage.structureValidity!.value).toBeNull();
+    expect(report.rawTupleStability.value).toBeNull();
+    expect(report.strictAllRunStability.value).toBeNull();
+    expect(report.adoptionStateStability.value).toBeNull();
+    expect(report.operational).toEqual({
+      scope: 'ALL_SCHEDULED_TASKS',
+      scheduledTasks: 2,
+      responseTasks: 2,
+      structureValidity: { numerator: 2, denominator: 2, value: 1 },
+      modelAbstentionRate: { numerator: 2, denominator: 2, value: 1 },
+      rawTupleStability: { numerator: 1, denominator: 1, value: 1 },
+      strictAllRunStability: { numerator: 1, denominator: 1, value: 1 },
+      adoptionStateStability: { numerator: 1, denominator: 1, value: 1 },
+    });
+    expect(report.counts.scheduled).toBe(2);
+    expect(report.counts.voluntaryAbstention).toBe(2);
+    expect(report.exclusions[0]?.reasons).toContain('REFERENCE_NOT_EXTERNALLY_VERIFIED');
+  });
+  it('does not let stable invalid-provenance cases improve eligible stability', () => {
+    const good = reference('good');
+    const bad = seal({
+      ...reference('bad'),
+      disposition: 'INPUT_PROVENANCE_INVALID',
+      critical: false,
+    });
+    const report = evaluateRelationObservations(plan([good, bad], 2), [
+      observation(good),
+      observation(good, { choice: 'QUALIFIES', direction: 'LEFT_TO_RIGHT' }, 2),
+      observation(bad),
+      observation(bad, supports, 2),
+    ]);
+    expect(report.rawTupleStability).toEqual({ numerator: 0, denominator: 1, value: 0 });
+    expect(report.operational.rawTupleStability).toEqual({
+      numerator: 1,
+      denominator: 2,
+      value: 0.5,
+    });
+    expect(report.counts.repeatedCases).toBe(1);
+  });
+  it('exposes a disputed warrant without granting a correct answer or losing its rejection reason', () => {
+    const entry = reference();
+    const output: RelationObservation = {
+      ...observation(entry),
+      warrant: {
+        status: 'ASSESSED',
+        matchesAlternativeIds: [supports.alternativeId],
+        verification: externalFormatExample('placeholder'),
+      },
+    };
+    if (output.warrant.status !== 'ASSESSED') throw new Error('fixture');
+    const disputed: RelationObservation = {
+      ...output,
+      warrant: {
+        ...output.warrant,
+        verification: {
+          ...output.warrant.verification,
+          subjectDigest: warrantAssessmentSubject(entry, output),
+          unresolvedMaterialDisagreement: true,
+        },
+      },
+    };
+    const report = evaluateRelationObservations(plan([entry]), [disputed]);
+    expect(report.warrantRejections).toEqual([
+      { taskId: output.taskId, reasons: ['UNRESOLVED_MATERIAL_DISAGREEMENT'] },
+    ]);
+    expect(report.raw.precision.value).toBeNull();
+    expect(report.raw.assessment.unresolvedWarrants).toBe(1);
+    expect(report.counts.assessedWarrantResponses).toBe(0);
+    expect(report.raw.counts.tp).toBe(0);
+  });
+  it('bounds every possible resolution of two unknown warrants without hiding a known miss or false link', () => {
+    const entries = ['hit', 'unknown-a', 'unknown-b', 'wrong', 'missing'].map((id) =>
+      reference(id),
+    );
+    const outputs: RelationObservation[] = [
+      observation(entries[0]!),
+      { ...observation(entries[1]!), warrant: { status: 'NOT_OBSERVED' } },
+      { ...observation(entries[2]!), warrant: { status: 'NOT_OBSERVED' } },
+      observation(entries[3]!, { choice: 'CONTRADICTS', direction: 'NONE' }),
+    ];
+    const partial = evaluateRelationObservations(plan(entries), outputs);
+    expect(partial.raw.precision.value).toBeNull();
+    expect(partial.raw.recall.value).toBeNull();
+    expect(partial.raw.bounds.precision).toEqual({ lower: 0.25, upper: 0.75 });
+    expect(partial.raw.bounds.recall).toEqual({ lower: 0.2, upper: 0.6 });
+    expect(partial.raw.bounds.f1).toEqual({ lower: 0.222222222222, upper: 0.666666666667 });
+    for (let mask = 0; mask < 4; mask++) {
+      const completed = outputs.map((output, index) =>
+        index === 1 || index === 2
+          ? ({
+              ...output,
+              warrant: {
+                status: 'SYNTHETIC_CONTRACT',
+                fixtureIdentity: 'hypothetical-oracle-not-a-person',
+                matchesAlternativeIds: mask & (1 << (index - 1)) ? [supports.alternativeId] : [],
+              },
+            } as RelationObservation)
+          : output,
+      );
+      const full = evaluateRelationObservations(plan(entries), completed);
+      for (const name of ['precision', 'recall', 'f1', 'criticalRecall'] as const) {
+        expect(full.raw[name].value).not.toBeNull();
+        expect(full.raw[name].value!).toBeGreaterThanOrEqual(partial.raw.bounds[name].lower!);
+        expect(full.raw[name].value!).toBeLessThanOrEqual(partial.raw.bounds[name].upper!);
+      }
+    }
+    expect(partial.raw.counts).toEqual({ tp: 1, fp: 1, fn: 2 });
+    expect(partial.tupleOnly.raw.counts).toEqual({ tp: 3, fp: 1, fn: 2 });
+  });
+  it('rejects old measurement plans instead of silently reinterpreting frozen results', () => {
+    const oldPlan = {
+      ...plan(),
+      version: 'VP05_RELATION_MEASUREMENT_0.1',
+    } as unknown as RelationEvaluationPlan;
+    expect(() => evaluateRelationObservations(oldPlan, [])).toThrow(
+      'measurement revision mismatch',
+    );
+  });
+  it('keeps a confirmed direction error scorable without inventing a warrant assessment', () => {
+    const entry = reference();
+    const report = evaluateRelationObservations(plan([entry]), [
+      {
+        ...observation(entry, { choice: 'SUPPORTS', direction: 'RIGHT_TO_LEFT' }),
+        warrant: { status: 'NOT_OBSERVED' },
+      },
+    ]);
+    expect(report.raw.counts).toEqual({ tp: 0, fp: 1, fn: 1 });
+    expect(report.raw.precision).toEqual({ numerator: 0, denominator: 1, value: 0 });
+    expect(report.raw.bounds.precision).toEqual({ lower: 0, upper: 0 });
+    expect(report.raw.assessment.assessedWarrantResponses).toBe(0);
+    expect(report.raw.assessment.unresolvedWarrants).toBe(0);
+    expect(report.tupleOnly.raw.conditionalDirectionAccuracy).toEqual({
+      numerator: 0,
+      denominator: 1,
+      value: 0,
+    });
+  });
+  it('does not erase completely assessed critical recall because a noncritical warrant is unknown', () => {
+    const critical = reference('critical');
+    const other = seal({ ...reference('noncritical'), critical: false });
+    const report = evaluateRelationObservations(plan([critical, other]), [
+      observation(critical),
+      { ...observation(other), warrant: { status: 'NOT_OBSERVED' } },
+    ]);
+    expect(report.raw.recall.value).toBeNull();
+    expect(report.raw.criticalRecall).toEqual({ numerator: 1, denominator: 1, value: 1 });
+    expect(report.raw.bounds.criticalRecall).toEqual({ lower: 1, upper: 1 });
+    expect(report.raw.assessment.unresolvedWarrants).toBe(1);
+  });
+  it('scores explicit absence only under the distinct isolated policy and never as abstention', () => {
+    const original = reference('isolated-negative', [negative]);
+    const entry = seal({
+      ...original,
+      critical: false,
+      input: {
+        ...original.input,
+        target: 'V6_EXPLICIT_NEGATIVE_ISOLATED',
+        policyRevision: RELATION_TARGET_REVISIONS.V6_EXPLICIT_NEGATIVE_ISOLATED,
+      },
+    });
+    const report = evaluateRelationObservations(plan([entry]), [observation(entry, negative)]);
+    expect(report.target).toBe('V6_EXPLICIT_NEGATIVE_ISOLATED');
+    expect(report.explicitNegativeCorrectness).toEqual({ numerator: 1, denominator: 1, value: 1 });
+    expect(report.raw.recall.value).toBeNull();
+    const abstention = evaluateRelationObservations(plan([entry]), [
+      observation(entry, unresolved),
+    ]);
+    expect(abstention.explicitNegativeCorrectness.value).toBe(0);
+    expect(abstention.modelAbstentionRate.value).toBe(1);
+    expect(() => validateRelationEvaluation(plan([original]), [])).toThrow('not in V6');
+  });
+  it('does not reuse the v6 policy identity for isolated seven-choice references', () => {
+    const entry = seal({
+      ...reference(),
+      input: { ...reference().input, target: 'V6_EXPLICIT_NEGATIVE_ISOLATED' },
+    });
+    expect(() => validateRelationEvaluation(plan([entry]), [])).toThrow('policy revision mismatch');
+  });
+  it.each(['different-year', 'different-entity', 'same-number-different-measure'])(
+    'rejects a directionless QUALIFIES import shaped like audited case %s without repairing old labels',
+    (caseId) => {
+      // Synthetic malformed import, not a modification or regrade of the historical case.
+      const malformed = reference(`synthetic-import-${caseId}`, [
+        {
+          ...supports,
+          choice: 'QUALIFIES',
+          direction: 'NONE',
+        },
+      ]);
+      expect(() => validateRelationEvaluation(plan([malformed]), [])).toThrow('invalid direction');
+    },
+  );
 });

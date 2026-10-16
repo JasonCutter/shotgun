@@ -275,3 +275,43 @@ Quality·Frontend·Required Gates가 모두 SUCCESS다. 앞 절의 merge 대기�
 Docker 엔진 unavailable이므로 DB/앱·worker는 시작하지 않았다. 청구 후속
 문서와 이 설치 증거는 새 로컬 변경이며 게시·merge 승인과 구분한다.
 외부 의미 검증·설치본의 격리 제품 경로·운영 설치/reboot Gate는 남는다.
+
+### 2026-10-16 — 외부 AI 교차 검토와 평가 보고0.2 로컬 보완
+
+사용자가 전달한 AI 1·2단계 검토를 실제 코드와 합성 반례로 확인했다. 현행
+계약과 일치한다는 설명만으로0점/검증률 오독 문제를 닫지 않고, 후속 지시에 따라
+[평가 보고0.2](./evaluation-report-safety-2026-10-16.md)를 로컬 구현했다.
+종류·방향과 warrant 품질, 미확정 N/A/bounds, adopted miss와 실제 warrant
+검증 수, eligible/전체 운영 안정성을 분리한다. 기존72/432/B12는 재채점하지 않는다.
+NO_RELATION 및 제품 인수 Gate는 별도 미채택 정책 초안이며 v6/0.9·A1 인증·
+생산 코드/DB/권위·실제 provider 호출은 그대로다. 게시·merge와 운영 승인을
+자동 확장하지 않는다. 이 로컬 보완으로 전체 VP 최종 인수를 선언하지 않는다.
+
+후속 사용자가 두 정책 보완의 격리 구현·계약 정비를 명시 승인했다.
+[새 negative 격리 계약](./explicit-negative-isolated-2026-10-16.md)은7종 schema와
+negative/abstention/withheld를 분리하고 live/production execution을 거부한다.
+인증 Gold는 기존 요건을 유지하며 제품 인수와 보장 범위를 분리했다. 운영
+v6/0.9를 바꾸지 않고 실제 AI·과거 재채점·운영 DB/worker·Git 게시를 수행하지 않는다.
+
+### 2026-10-16 — 평가 기준의 수정 가능성과 negative 격리 실행 연결
+
+후속 사용자는 모호하거나 불완전한 기준 자체도 바꾸며 계속 진행하도록 지시했다.
+기준 준수와 제품 목표 충족을 구분하고 반례·변경 이력·증거 수준을 기록한다.
+[기존 worker/호출 원장 격리 연결](./explicit-negative-durable-2026-10-16.md)은
+Fake-only7종 결과의 저장·claim/attempt binding·no-edge 완료·재기동을 검증한다.
+새 policy의 정상 app 선택, negative가 과거 positive를 대체하는 활성 projection,
+일반 Ask/UI와 운영 전환은 아직 완료하지 않았다. 기존 counter/원장 권위를
+재설계하거나 과거72/432/B12를 재채점하지 않는다. Git 게시·운영 활성화·실AI
+승인을 자동 확장하지 않는다.
+
+### 2026-10-17 — PR392 CI PASS 후 독립 리뷰와 TS6 근거 보정
+
+PR392 head `dbfdef92743fcffbdaa3017d00e061de9bf3d6b3`의 CI38913890006은
+Quality·Frontend·Required Gates SUCCESS, PostgreSQL767 PASS/2 SKIP였다.
+이후 독립 AI 코드 리뷰가 generic payload를 Port로 해석하는 기존 분석기 결함과
+binding 필드 대조 공백을 확인했다. CI 성공 이력과 실제 근거의 정확성을 구분하여
+MERGE_HOLD를 유지하고 [최소 로컬 보정](./ts6-generic-binding-correction-2026-10-17.md)을
+검증했다. TS6 전체64/64 PASS이며 v2~v7 동결 입력, 기존 소유권·분류와 운영
+동작은 유지한다. 현재 v8의 잘못된 호출 근거는 제거했다. 새 exact head의 게시·CI와
+별도 merge 승인이 남는다. NO_RELATION의 정상 제품 연결·최종 Windows release는
+이 감사 보정으로 완료되지 않으며 운영 앱/worker와 실제 provider는 실행하지 않았다.

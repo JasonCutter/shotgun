@@ -1,5 +1,19 @@
 # ADR-098: Stage 12.1 Quality Evaluation Contract
 
+## 2026-10-16 사용자 승인 후속 — 인증과 제품 인수 범위
+
+[승인된 보완](../add/vp05-evaluation-trust/relation-negative-and-acceptance-policy-draft.md)에
+따라 외부 적격 인간/동등 reference 검증은 CERTIFICATION/Gold 요건으로 유지한다.
+이를 모든 내부 관계 또는 과거72개 전부의 인간 승인 없이는 제품을 인수할 수
+없다는 일률적 요건으로 확대하지 않는다. 실제 제품 검증·결정론적/AI 교차 검토의
+범위와 미인증 의미 품질 한계를 나눠 보고한다. 인증 분모0은 계속 N/A이고
+필수 안전·제품 결함/적용 품질 기준을 PASS로 바꾸지 않는다. 아래 선행 기록과
+동결 결과는 유지하며 운영·실AI·기존 결과 재채점 승인은 포함하지 않는다.
+
+인증 reference0/N/A 자체만으로 최종 제품 인수를 자동 차단하지 않는다.
+제품의 실제 근거·답변·최신성·권한·복구 검증과 미인증 의미 품질의 범위를
+별도로 공개하며 필수 제품/안전 결함을 무시하지 않는다.
+
 - 상태: **Accepted**
 - 일자: 2026-07-22
 - 상위 전략: [Stage 12.1 Hardening Strategy](../../engineering/stage-12-1-hardening-strategy.md)

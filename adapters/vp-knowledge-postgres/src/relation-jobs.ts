@@ -167,8 +167,8 @@ const pairJoins = `
     ON reset_epoch.project_id = job.project_id`;
 
 /** All pair selection and writes are scoped to current, immutable Evidence. */
-export class PostgresVPRelationJobs
-  implements VPRelationJobStorePort, VPDecisionExecutionRepositoryPort
+export class PostgresVPRelationJobs<Output = VPRelationDecision>
+  implements VPRelationJobStorePort, VPDecisionExecutionRepositoryPort<Output>
 {
   constructor(
     private readonly pool: Pool,
@@ -178,6 +178,8 @@ export class PostgresVPRelationJobs
     // Application composition always requires the shared global authority.
     private readonly globalAuthorityRequired = true,
     private readonly frontierMode = false,
+    private readonly validOutput: (value: Output) => boolean = (value) =>
+      validVPRelationDecision(value as VPRelationDecision),
   ) {
     if (!Number.isSafeInteger(maxDailyProviderAttempts) || maxDailyProviderAttempts < 1) {
       throw new Error('VP daily provider attempt ceiling must be a positive integer.');
@@ -354,7 +356,7 @@ export class PostgresVPRelationJobs
     );
   }
 
-  async claimNext(policyRevision: string): Promise<VPRelationJob | undefined> {
+  async claimNext(policyRevision: string, projectId?: string): Promise<VPRelationJob | undefined> {
     await this.recoverExpiredExecutions();
     return withSafePostgresTransaction(
       this.pool,
@@ -364,6 +366,7 @@ export class PostgresVPRelationJobs
              FROM vp.relation_jobs AS job
              ${pairJoins}
             WHERE job.policy_revision = $1
+              AND ($3::text IS NULL OR job.project_id = $3)
               AND (job.status = 'PENDING'
                 OR (job.status = 'RETRYABLE' AND job.next_attempt_at <= clock_timestamp())
                 OR (job.status = 'RUNNING' AND job.lease_expires_at <= clock_timestamp()))
@@ -384,7 +387,7 @@ export class PostgresVPRelationJobs
               ))
             ORDER BY job.created_at, job.job_id
             LIMIT 1 FOR UPDATE OF job SKIP LOCKED`,
-          [policyRevision, this.frontierMode],
+          [policyRevision, this.frontierMode, projectId ?? null],
         );
         const row = selected.rows[0];
         if (!row) return undefined;
@@ -421,8 +424,8 @@ export class PostgresVPRelationJobs
   }
 
   async claim(
-    input: Parameters<VPDecisionExecutionRepositoryPort['claim']>[0],
-  ): Promise<VPDecisionExecutionClaim> {
+    input: Parameters<VPDecisionExecutionRepositoryPort<Output>['claim']>[0],
+  ): Promise<VPDecisionExecutionClaim<Output>> {
     if (
       this.globalAuthorityRequired &&
       (!input.globalClaimId || input.semanticAttemptId !== input.leaseToken)
@@ -430,7 +433,7 @@ export class PostgresVPRelationJobs
       throw new Error('A bound global claim is required before VP relation provider egress.');
     }
     try {
-      return await withSafePostgresTransaction<VPDecisionExecutionClaim>(
+      return await withSafePostgresTransaction<VPDecisionExecutionClaim<Output>>(
         this.pool,
         async (client) => {
           const active = await client.query<{ attempt_count: number; max_attempts: number }>(
@@ -485,7 +488,7 @@ export class PostgresVPRelationJobs
             readonly global_claim_id: string | null;
             readonly semantic_attempt_id: string | null;
             readonly state: 'RUNNING' | 'OUTPUT_STORED' | 'OUTCOME_UNKNOWN';
-            readonly output_json: VPRelationDecision | null;
+            readonly output_json: Output | null;
           }>(
             `SELECT request_digest, provider_identity, global_claim_id::text,
                     semantic_attempt_id::text, state, output_json
@@ -505,7 +508,7 @@ export class PostgresVPRelationJobs
             throw new Error('VP relation provider call identity is already bound to other input.');
           }
           if (row.state === 'OUTPUT_STORED') {
-            if (!row.output_json || !validVPRelationDecision(row.output_json)) {
+            if (!row.output_json || !this.validOutput(row.output_json)) {
               throw new Error('Stored VP relation provider output failed integrity validation.');
             }
             return { status: 'OUTPUT_STORED' as const, decision: row.output_json };
@@ -551,7 +554,7 @@ export class PostgresVPRelationJobs
         readonly global_claim_id: string | null;
         readonly semantic_attempt_id: string | null;
         readonly state: 'RUNNING' | 'OUTPUT_STORED' | 'OUTCOME_UNKNOWN';
-        readonly output_json: VPRelationDecision | null;
+        readonly output_json: Output | null;
       }>(
         `SELECT request_digest, provider_identity, global_claim_id::text,
                 semantic_attempt_id::text, state, output_json
@@ -569,11 +572,7 @@ export class PostgresVPRelationJobs
       ) {
         throw error;
       }
-      if (
-        row.state === 'OUTPUT_STORED' &&
-        row.output_json &&
-        validVPRelationDecision(row.output_json)
-      ) {
+      if (row.state === 'OUTPUT_STORED' && row.output_json && this.validOutput(row.output_json)) {
         return { status: 'OUTPUT_STORED', decision: row.output_json };
       }
       return { status: 'OUTCOME_UNKNOWN' };
@@ -582,13 +581,13 @@ export class PostgresVPRelationJobs
 
   /** Readback never starts a call or consumes a semantic attempt. */
   async readExecution(
-    input: Parameters<VPDecisionExecutionRepositoryPort['claim']>[0],
-  ): Promise<VPDecisionExecutionClaim | undefined> {
+    input: Parameters<VPDecisionExecutionRepositoryPort<Output>['claim']>[0],
+  ): Promise<VPDecisionExecutionClaim<Output> | undefined> {
     const result = await this.pool.query<{
       request_digest: string;
       provider_identity: string;
       state: 'RUNNING' | 'OUTPUT_STORED' | 'OUTCOME_UNKNOWN';
-      output_json: VPRelationDecision | null;
+      output_json: Output | null;
     }>(
       `SELECT request_digest, provider_identity, state, output_json
          FROM vp.relation_provider_calls
@@ -604,7 +603,7 @@ export class PostgresVPRelationJobs
       throw new Error('VP relation provider call identity is already bound to other input.');
     }
     if (row.state === 'OUTPUT_STORED') {
-      if (!row.output_json || !validVPRelationDecision(row.output_json)) {
+      if (!row.output_json || !this.validOutput(row.output_json)) {
         throw new Error('Stored VP relation provider output failed integrity validation.');
       }
       return { status: 'OUTPUT_STORED', decision: row.output_json };
@@ -616,8 +615,8 @@ export class PostgresVPRelationJobs
     readonly projectId: string;
     readonly jobId: string;
     readonly leaseToken: string;
-  }): Promise<VPRelationDecision | undefined> {
-    const result = await this.pool.query<{ output_json: VPRelationDecision }>(
+  }): Promise<Output | undefined> {
+    const result = await this.pool.query<{ output_json: Output }>(
       `SELECT call.output_json
          FROM vp.relation_jobs AS job
          JOIN vp.relation_provider_calls AS call USING (project_id, job_id)
@@ -627,7 +626,7 @@ export class PostgresVPRelationJobs
       [input.projectId, input.jobId, input.leaseToken],
     );
     if (result.rows.length === 0) return undefined;
-    if (result.rows.length !== 1 || !validVPRelationDecision(result.rows[0]!.output_json)) {
+    if (result.rows.length !== 1 || !this.validOutput(result.rows[0]!.output_json)) {
       throw new Error('Stored VP relation output failed single-call integrity validation.');
     }
     return result.rows[0]!.output_json;
@@ -664,15 +663,17 @@ export class PostgresVPRelationJobs
     );
   }
 
-  async storeOutput(input: Parameters<VPDecisionExecutionRepositoryPort['storeOutput']>[0]) {
-    if (!validVPRelationDecision(input.decision)) {
+  async storeOutput(
+    input: Parameters<VPDecisionExecutionRepositoryPort<Output>['storeOutput']>[0],
+  ) {
+    if (!this.validOutput(input.decision)) {
       throw new Error('VP relation provider output failed validation before persistence.');
     }
     try {
       return await withSafePostgresTransaction(
         this.pool,
         async (client) => {
-          const saved = await client.query<{ readonly output_json: VPRelationDecision }>(
+          const saved = await client.query<{ readonly output_json: Output }>(
             `UPDATE vp.relation_provider_calls
                 SET state = 'OUTPUT_STORED', output_json = $5::jsonb, failure_code = NULL,
                     updated_at = clock_timestamp()
@@ -708,7 +709,7 @@ export class PostgresVPRelationJobs
           const existing = await client.query<{
             readonly request_digest: string;
             readonly state: string;
-            readonly output_json: VPRelationDecision | null;
+            readonly output_json: Output | null;
           }>(
             `SELECT request_digest, state, output_json FROM vp.relation_provider_calls
               WHERE project_id = $1 AND job_id = $2 AND execution_key = $3 FOR UPDATE`,
@@ -720,7 +721,7 @@ export class PostgresVPRelationJobs
             row.request_digest !== input.requestDigest ||
             row.state !== 'OUTPUT_STORED' ||
             !row.output_json ||
-            !validVPRelationDecision(row.output_json)
+            !this.validOutput(row.output_json)
           ) {
             throw new Error('VP relation provider output could not be durably stored.');
           }
@@ -732,7 +733,7 @@ export class PostgresVPRelationJobs
       const durable = await this.pool.query<{
         readonly request_digest: string;
         readonly state: string;
-        readonly output_json: VPRelationDecision | null;
+        readonly output_json: Output | null;
       }>(
         `SELECT request_digest, state, output_json FROM vp.relation_provider_calls
           WHERE project_id = $1 AND job_id = $2 AND execution_key = $3`,
@@ -743,7 +744,7 @@ export class PostgresVPRelationJobs
         row?.request_digest === input.requestDigest &&
         row.state === 'OUTPUT_STORED' &&
         row.output_json &&
-        validVPRelationDecision(row.output_json)
+        this.validOutput(row.output_json)
       ) {
         return row.output_json;
       }
@@ -752,7 +753,7 @@ export class PostgresVPRelationJobs
   }
 
   async markOutcomeUnknown(
-    input: Parameters<VPDecisionExecutionRepositoryPort['markOutcomeUnknown']>[0],
+    input: Parameters<VPDecisionExecutionRepositoryPort<Output>['markOutcomeUnknown']>[0],
   ): Promise<void> {
     await withSafePostgresTransaction(
       this.pool,

@@ -1071,16 +1071,34 @@ export const validateCorpus = (corpus: Corpus, root: string = ROOT): ValidationR
       )
         add(issues, 'CALLER_SET', boundary.boundaryId);
       if (corpus.schemaVersion === 'ts6.phase-b.transaction-authority.v4') {
-        const expectedGrades = new Map(
+        const siteKey = (caller: CallEvidence): string =>
+          `${caller.file}:${caller.line}:${caller.callNeedle}`;
+        const expectedBindings = new Map(
           expectedBoundary.productionReachability.callers.map((caller) => [
-            `${caller.file}:${caller.callNeedle}`,
-            caller.evidenceGrade,
+            siteKey(caller),
+            caller,
           ]),
         );
+        const sites = boundary.productionReachability.callers.map(siteKey);
+        if (
+          sites.length !== expectedBindings.size ||
+          sites.some((site) => !expectedBindings.has(site))
+        )
+          add(issues, 'CALLER_SET', boundary.boundaryId);
+        if (new Set(sites).size !== sites.length)
+          add(issues, 'CALLER_SITE_DUPLICATE', boundary.boundaryId);
         for (const caller of boundary.productionReachability.callers) {
-          const key = `${caller.file}:${caller.callNeedle}`;
-          if (expectedGrades.get(key) !== caller.evidenceGrade)
+          const key = siteKey(caller);
+          const expected = expectedBindings.get(key);
+          if (!expected) continue;
+          if (expected.evidenceGrade !== caller.evidenceGrade)
             add(issues, 'CALLER_EVIDENCE_GRADE_DRIFT', `${boundary.boundaryId}:${key}`);
+          if (expected.receiverType !== caller.receiverType)
+            add(issues, 'CALLER_RECEIVER_TYPE_DRIFT', `${boundary.boundaryId}:${key}`);
+          if ((expected.bindingPort ?? null) !== (caller.bindingPort ?? null))
+            add(issues, 'CALLER_BINDING_PORT_DRIFT', `${boundary.boundaryId}:${key}`);
+          if (expected.bindingKind !== caller.bindingKind)
+            add(issues, 'CALLER_BINDING_KIND_DRIFT', `${boundary.boundaryId}:${key}`);
         }
       }
     }

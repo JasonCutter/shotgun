@@ -62,19 +62,19 @@ export type VPDecisionProviderPort = {
   decideRelation(input: VPRelationDecisionRequest): Promise<VPRelationDecision>;
 };
 
-export type VPDecisionExecutionClaim =
+export type VPDecisionExecutionClaim<Output = VPRelationDecision> =
   | { readonly status: 'STARTED'; readonly callId?: string }
-  | { readonly status: 'OUTPUT_STORED'; readonly decision: VPRelationDecision }
+  | { readonly status: 'OUTPUT_STORED'; readonly decision: Output }
   | { readonly status: 'OUTCOME_UNKNOWN' };
 
 /** Durable provider-call boundary owned by the VP relation job Adapter. */
-export type VPDecisionExecutionRepositoryPort = {
+export type VPDecisionExecutionRepositoryPort<Output = VPRelationDecision> = {
   /** Recovery reads stored output without resolving a fresh credential or authorizing egress. */
   readStoredByJob?(input: {
     readonly projectId: string;
     readonly jobId: string;
     readonly leaseToken: string;
-  }): Promise<VPRelationDecision | undefined>;
+  }): Promise<Output | undefined>;
   claim(input: {
     readonly projectId: string;
     readonly jobId: string;
@@ -84,14 +84,14 @@ export type VPDecisionExecutionRepositoryPort = {
     readonly providerIdentity: string;
     readonly globalClaimId?: string;
     readonly semanticAttemptId?: string;
-  }): Promise<VPDecisionExecutionClaim>;
+  }): Promise<VPDecisionExecutionClaim<Output>>;
   storeOutput(input: {
     readonly projectId: string;
     readonly jobId: string;
     readonly executionKey: string;
     readonly requestDigest: string;
-    readonly decision: VPRelationDecision;
-  }): Promise<VPRelationDecision>;
+    readonly decision: Output;
+  }): Promise<Output>;
   markOutcomeUnknown(input: {
     readonly projectId: string;
     readonly jobId: string;
@@ -150,7 +150,7 @@ export const validVPRelationDecision = (value: VPRelationDecision): boolean => {
 
 export type VPDecisionPolicy = {
   readonly revision: string;
-  /** Calibrated on the Shotgun relation Golden Corpus for this task and model. */
+  /** Adoption threshold. Calibration needs separate evidence for this exact task and model. */
   readonly minimumChoiceProbability: number;
   readonly maximumDeepAnalysisScore: number;
   readonly maximumInputTokens: number;

@@ -19,7 +19,11 @@ import * as policyRefresh from '../../assemblies/shotgun-app/src/vp-candidate-po
 import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres-test-database.js';
 import { seedAssertion } from '../helpers/vp05-p0-fixtures.js';
 
-const outputRoot = 'docs/implementation/vp05-p0-execution-authority-2026-10-11';
+// A regression run must never overwrite the accepted historical worker trace.
+const outputRoot = path.join(
+  process.env.VP05_P0_TRACE_OUTPUT ?? path.join(os.tmpdir(), 'shotgun-vp05-runtime'),
+  randomUUID(),
+);
 const revision = 'vp-deepseek-relation-v6-evidence-context';
 const validDecision = {
   choice: 'CONTRADICTS',

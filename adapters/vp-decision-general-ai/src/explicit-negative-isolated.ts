@@ -9,7 +9,7 @@ import {
   EXPLICIT_NEGATIVE_ISOLATED_REVISION,
   EXPLICIT_NEGATIVE_RESPONSE_SCHEMA,
   parseExplicitNegativeDeclaration,
-  type ExplicitNegativeDisposition,
+  type IsolatedRecord,
 } from '../../../modules/vp-decision/src/explicit-negative-isolated.js';
 import { sha256Text, stableJson } from '../../../packages/contracts/src/index.js';
 import { VP_RELATION_COMPARISON_SYSTEM_INSTRUCTION } from './index.js';
@@ -18,28 +18,7 @@ export const EXPLICIT_NEGATIVE_SYSTEM_INSTRUCTION =
   VP_RELATION_COMPARISON_SYSTEM_INSTRUCTION +
   ' Additional isolated policy: NO_RELATION is an explicit negative judgement when the supplied text is sufficient to rule out the defined positive relations, including meaningful topic overlap. It is not uncertainty, a withheld output, or proof that no connection could exist outside the supplied input. Keep the existing RELATED definition: do not require a direct mechanism link where meaningful topic overlap is sufficient. Shared words alone need not establish meaningful overlap. Use UNRESOLVED when missing context or material ambiguity prevents the judgement; a null excerpt alone does not force UNRESOLVED. NO_RELATION requires direction NONE and its own probability entry.';
 
-type IsolatedRecord = {
-  readonly transportKind: 'ISOLATED_FAKE';
-  readonly policyRevision: typeof EXPLICIT_NEGATIVE_ISOLATED_REVISION;
-  readonly requestDigest: string;
-  readonly schemaDigest: string;
-  readonly providerIdentity: AIProviderAdapterPort['identity'];
-  readonly providerObservation: {
-    readonly responseId: string | null;
-    readonly modelVersion: string | null;
-    readonly inputTokens: number | null;
-    readonly outputTokens: number | null;
-  } | null;
-  readonly rawResponse: string | null;
-  readonly disposition:
-    | ExplicitNegativeDisposition
-    | {
-        readonly status: 'INVALID';
-        readonly reason: 'OUTPUT_SCHEMA_INVALID' | 'PROVIDER_USAGE_INVALID';
-      }
-    | { readonly status: 'OUTCOME_UNKNOWN' };
-};
-
+export type { IsolatedRecord } from '../../../modules/vp-decision/src/explicit-negative-isolated.js';
 /** Not a production VPDecisionProviderPort: it cannot be wired into the normal worker. */
 export class IsolatedExplicitNegativeAdapter {
   constructor(private readonly fake: AIProviderAdapterPort) {

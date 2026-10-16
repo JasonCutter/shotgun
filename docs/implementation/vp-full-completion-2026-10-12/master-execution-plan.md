@@ -292,3 +292,14 @@ NO_RELATION 및 제품 인수 Gate는 별도 미채택 정책 초안이며 v6/0.
 negative/abstention/withheld를 분리하고 live/production execution을 거부한다.
 인증 Gold는 기존 요건을 유지하며 제품 인수와 보장 범위를 분리했다. 운영
 v6/0.9를 바꾸지 않고 실제 AI·과거 재채점·운영 DB/worker·Git 게시를 수행하지 않는다.
+
+### 2026-10-16 — 평가 기준의 수정 가능성과 negative 격리 실행 연결
+
+후속 사용자는 모호하거나 불완전한 기준 자체도 바꾸며 계속 진행하도록 지시했다.
+기준 준수와 제품 목표 충족을 구분하고 반례·변경 이력·증거 수준을 기록한다.
+[기존 worker/호출 원장 격리 연결](./explicit-negative-durable-2026-10-16.md)은
+Fake-only7종 결과의 저장·claim/attempt binding·no-edge 완료·재기동을 검증한다.
+새 policy의 정상 app 선택, negative가 과거 positive를 대체하는 활성 projection,
+일반 Ask/UI와 운영 전환은 아직 완료하지 않았다. 기존 counter/원장 권위를
+재설계하거나 과거72/432/B12를 재채점하지 않는다. Git 게시·운영 활성화·실AI
+승인을 자동 확장하지 않는다.

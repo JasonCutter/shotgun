@@ -3,7 +3,7 @@
   "baseSha": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
   "derivedFrom": {
     "parentArtifact": "artifacts/ts6-phase-b-c2-r15/approved-regression-relations.v8.json",
-    "parentSha256": "03e94ae0142c8ee372476be6552f97c9225883858b3c89f22a99a7deaa084d3e",
+    "parentSha256": "1c0df9e29da68aab8cdebb8d21dd9cc0ee36e0bdb10be8e75ebf6be878bc7e1f",
     "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
     "authorityVersion": "ts6.phase-b.current-authority-manifest.v8"
   },
@@ -269,7 +269,7 @@
         "status": "TEST_ONLY_OR_DEAD",
         "callers": []
       },
-      "legacyRecordedCallers": 4,
+      "legacyRecordedCallers": 5,
       "ackLossPolicy": {
         "kind": "OTHER_EXISTING_POLICY",
         "evidence": "existing manual transaction code"
@@ -305,7 +305,7 @@
             "bindingPort": "GlobalRelationBudgetPort",
             "bindingVia": "file-scope declaration of budget annotated GlobalRelationBudgetPort",
             "receiverType": "GlobalRelationBudgetPort",
-            "line": 181,
+            "line": 183,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -346,7 +346,7 @@
             "bindingPort": "GlobalRelationBudgetPort",
             "bindingVia": "file-scope declaration of budget annotated GlobalRelationBudgetPort",
             "receiverType": "GlobalRelationBudgetPort",
-            "line": 179,
+            "line": 181,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -362,7 +362,7 @@
             "bindingPort": "GlobalRelationBudgetPort",
             "bindingVia": "file-scope declaration of budget annotated GlobalRelationBudgetPort",
             "receiverType": "GlobalRelationBudgetPort",
-            "line": 225,
+            "line": 227,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -378,7 +378,7 @@
             "bindingPort": "GlobalRelationBudgetPort",
             "bindingVia": "field budget of ExecutionBoundVPRelationDispatcher declared as GlobalRelationBudgetPort",
             "receiverType": "GlobalRelationBudgetPort",
-            "line": 304,
+            "line": 306,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -2226,7 +2226,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 4,
+      "legacyRecordedCallers": 5,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -9624,7 +9624,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 4,
+      "legacyRecordedCallers": 5,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -9714,7 +9714,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 4,
+      "legacyRecordedCallers": 5,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -9849,7 +9849,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 4,
+      "legacyRecordedCallers": 5,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -12224,13 +12224,39 @@
           }
         ]
       },
-      "legacyRecordedCallers": 4,
+      "legacyRecordedCallers": 5,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
       },
       "regressionEvidenceIds": [
         "test:tests/database/source-refresh.database.test.ts:claims one job across independent connections and fences duplicate activation:PostgresSourceRefreshStore.claimNext"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts:47",
+      "file": "adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts",
+      "symbol": "PostgresIsolatedExplicitNegativeJobs",
+      "method": "completeRecordedNoEdge",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async completeRecordedNoEdge(input: {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "TEST_ONLY_OR_DEAD",
+        "callers": []
+      },
+      "legacyRecordedCallers": 0,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/vp-explicit-negative-isolated.database.test.ts:rejects a changed disposition and normal-v6 readback of the isolated output"
       ]
     },
     {
@@ -12264,7 +12290,7 @@
             "bindingPort": null,
             "bindingVia": "constructed in the call",
             "receiverType": "PostgresCandidateFrontier",
-            "line": 282,
+            "line": 284,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -12309,7 +12335,7 @@
             "bindingPort": null,
             "bindingVia": "constructed in the call",
             "receiverType": "PostgresCandidateFrontier",
-            "line": 278,
+            "line": 280,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -12397,7 +12423,7 @@
             "bindingPort": "VPKnowledgeLedgerPort",
             "bindingVia": "field ledger of VPAssertionLedgerWorker declared as VPKnowledgeLedgerPort",
             "receiverType": "VPKnowledgeLedgerPort",
-            "line": 337,
+            "line": 375,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -12410,7 +12436,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:290",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:292",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "recoverExpiredExecutions",
@@ -12440,7 +12466,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresVPRelationJobs",
             "receiverType": "PostgresVPRelationJobs",
-            "line": 358,
+            "line": 360,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -12473,7 +12499,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:359",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:361",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "claimNext",
@@ -12482,7 +12508,7 @@
         "primitive": "withSafePostgresTransaction"
       },
       "sourceEvidence": {
-        "declarationNeedle": "async claimNext(policyRevision: string): Promise<VPRelationJob | undefined> {",
+        "declarationNeedle": "async claimNext(policyRevision: string, projectId?: string): Promise<VPRelationJob | undefined> {",
         "transactionNeedle": "withSafePostgresTransaction"
       },
       "productionReachability": {
@@ -12494,19 +12520,19 @@
             "callExpression": "this.jobs.claimNext(...)",
             "callNeedle": "this.jobs.claimNext(",
             "bindingEvidence": [
-              "async claimNext(policyRevision: string): Promise<VPRelationJob | undefined> {"
+              "async claimNext(policyRevision: string, projectId?: string): Promise<VPRelationJob | undefined> {"
             ],
             "regressionEvidenceIds": [],
-            "bindingKind": "SOLE",
+            "bindingKind": "PORT",
             "bindingPort": "VPRelationJobStorePort",
             "bindingVia": "field jobs of VPRelationJobWorker declared as VPRelationJobStorePort",
             "receiverType": "VPRelationJobStorePort",
-            "line": 128,
+            "line": 143,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 4,
+      "legacyRecordedCallers": 5,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -12514,7 +12540,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:433",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:436",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "claim",
@@ -12538,7 +12564,7 @@
               "async claim("
             ],
             "regressionEvidenceIds": [],
-            "bindingKind": "SOLE",
+            "bindingKind": "PORT",
             "bindingPort": "VPDecisionExecutionRepositoryPort",
             "bindingVia": "field executions of GeneralAIVPDecisionAdapter declared as VPDecisionExecutionRepositoryPort",
             "receiverType": "VPDecisionExecutionRepositoryPort",
@@ -12555,15 +12581,15 @@
             ],
             "regressionEvidenceIds": [],
             "bindingKind": "PORT",
-            "bindingPort": "ExecutionBoundRelationLedger",
-            "bindingVia": "file-scope declaration of ledger annotated ExecutionBoundRelationLedger",
-            "receiverType": "ExecutionBoundRelationLedger",
-            "line": 197,
+            "bindingPort": "Output",
+            "bindingVia": "file-scope declaration of ledger annotated Output",
+            "receiverType": "Output",
+            "line": 199,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 4,
+      "legacyRecordedCallers": 5,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -12571,7 +12597,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:672",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:673",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "storeOutput",
@@ -12580,7 +12606,7 @@
         "primitive": "withSafePostgresTransaction"
       },
       "sourceEvidence": {
-        "declarationNeedle": "async storeOutput(input: Parameters<VPDecisionExecutionRepositoryPort['storeOutput']>[0]) {",
+        "declarationNeedle": "async storeOutput(",
         "transactionNeedle": "withSafePostgresTransaction"
       },
       "productionReachability": {
@@ -12592,10 +12618,10 @@
             "callExpression": "this.executions.storeOutput(...)",
             "callNeedle": "this.executions.storeOutput(",
             "bindingEvidence": [
-              "async storeOutput(input: Parameters<VPDecisionExecutionRepositoryPort['storeOutput']>[0]) {"
+              "async storeOutput("
             ],
             "regressionEvidenceIds": [],
-            "bindingKind": "SOLE",
+            "bindingKind": "PORT",
             "bindingPort": "VPDecisionExecutionRepositoryPort",
             "bindingVia": "field executions of GeneralAIVPDecisionAdapter declared as VPDecisionExecutionRepositoryPort",
             "receiverType": "VPDecisionExecutionRepositoryPort",
@@ -12608,19 +12634,19 @@
             "callExpression": "ledger.storeOutput(...)",
             "callNeedle": "ledger.storeOutput(",
             "bindingEvidence": [
-              "async storeOutput(input: Parameters<VPDecisionExecutionRepositoryPort['storeOutput']>[0]) {"
+              "async storeOutput("
             ],
             "regressionEvidenceIds": [],
             "bindingKind": "PORT",
-            "bindingPort": "ExecutionBoundRelationLedger",
-            "bindingVia": "file-scope declaration of ledger annotated ExecutionBoundRelationLedger",
-            "receiverType": "ExecutionBoundRelationLedger",
-            "line": 81,
+            "bindingPort": "Output",
+            "bindingVia": "file-scope declaration of ledger annotated Output",
+            "receiverType": "Output",
+            "line": 83,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 4,
+      "legacyRecordedCallers": 5,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -12628,7 +12654,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:757",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:758",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "markOutcomeUnknown",
@@ -12652,7 +12678,7 @@
               "async markOutcomeUnknown("
             ],
             "regressionEvidenceIds": [],
-            "bindingKind": "SOLE",
+            "bindingKind": "PORT",
             "bindingPort": "VPDecisionExecutionRepositoryPort",
             "bindingVia": "field executions of GeneralAIVPDecisionAdapter declared as VPDecisionExecutionRepositoryPort",
             "receiverType": "VPDecisionExecutionRepositoryPort",
@@ -12669,15 +12695,15 @@
             ],
             "regressionEvidenceIds": [],
             "bindingKind": "PORT",
-            "bindingPort": "ExecutionBoundRelationLedger",
-            "bindingVia": "file-scope declaration of ledger annotated ExecutionBoundRelationLedger",
-            "receiverType": "ExecutionBoundRelationLedger",
-            "line": 82,
+            "bindingPort": "Output",
+            "bindingVia": "file-scope declaration of ledger annotated Output",
+            "receiverType": "Output",
+            "line": 84,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 15,
+      "legacyRecordedCallers": 16,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -12685,7 +12711,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:807",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:808",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "completeDecision",
@@ -12709,11 +12735,11 @@
               "async completeDecision(input: VPRelationJobDecision): Promise<boolean> {"
             ],
             "regressionEvidenceIds": [],
-            "bindingKind": "SOLE",
+            "bindingKind": "PORT",
             "bindingPort": "VPRelationJobStorePort",
             "bindingVia": "field jobs of VPRelationJobWorker declared as VPRelationJobStorePort",
             "receiverType": "VPRelationJobStorePort",
-            "line": 252,
+            "line": 290,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -12725,11 +12751,11 @@
               "async completeDecision(input: VPRelationJobDecision): Promise<boolean> {"
             ],
             "regressionEvidenceIds": [],
-            "bindingKind": "SOLE",
+            "bindingKind": "PORT",
             "bindingPort": "VPRelationJobStorePort",
             "bindingVia": "field jobs of VPRelationJobWorker declared as VPRelationJobStorePort",
             "receiverType": "VPRelationJobStorePort",
-            "line": 271,
+            "line": 309,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -14612,6 +14638,19 @@
       "canonicalBoundaryId": "safe:adapters/source-refresh-postgres/src/index.ts:45"
     },
     {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts:47",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TEST_ONLY_OR_DEAD",
+      "file": "adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts",
+      "symbol": "PostgresIsolatedExplicitNegativeJobs",
+      "method": "completeRecordedNoEdge",
+      "reason": "No qualified production call site remains after receiver resolution.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts:47"
+    },
+    {
       "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:172",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
@@ -14664,7 +14703,7 @@
       "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/index.ts:114"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:290",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:292",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -14674,10 +14713,10 @@
       "productionReachable": true,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:290"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:292"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:359",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:361",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -14687,10 +14726,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:359"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:361"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:433",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:436",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -14700,10 +14739,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:433"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:436"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:672",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:673",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -14713,10 +14752,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:672"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:673"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:757",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:758",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -14726,10 +14765,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:757"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:758"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:807",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:808",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -14739,7 +14778,7 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:807"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:808"
     }
   ],
   "historicalReconciliation": [
@@ -16916,7 +16955,7 @@
       "file": "tests/database/vp05-p0-crash.database.test.ts",
       "testName": "preserves attempts across pre-activation crashes and fences an activated unknown egress",
       "covers": [
-        "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:290"
+        "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:292"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresVPRelationJobs.recoverExpiredExecutions",
@@ -16975,6 +17014,19 @@
       "path": [
         "PostgresVPImageObservationLedger.append"
       ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/vp-explicit-negative-isolated.database.test.ts:rejects a changed disposition and normal-v6 readback of the isolated output",
+      "file": "tests/database/vp-explicit-negative-isolated.database.test.ts",
+      "testName": "rejects a changed disposition and normal-v6 readback of the isolated output",
+      "covers": [
+        "safe:adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts:47"
+      ],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "completeRecordedNoEdge",
+      "path": [
+        "completeRecordedNoEdge"
+      ]
     }
   ],
   "historical": {
@@ -16988,11 +17040,11 @@
     "TX_PARTICIPANT": 0,
     "TX_DELEGATE": 0,
     "NON_TX": 14,
-    "TEST_ONLY_OR_DEAD": 18,
+    "TEST_ONLY_OR_DEAD": 19,
     "REVIEW_REQUIRED": 0,
-    "c2r1CandidateRecords": 144,
-    "uniqueCandidateIdentities": 144,
-    "reconciliationTotal": 144,
+    "c2r1CandidateRecords": 145,
+    "uniqueCandidateIdentities": 145,
+    "reconciliationTotal": 145,
     "historicalRows": 87,
     "historicalRowsExplained": 87,
     "historicalRowsUnexplained": 0

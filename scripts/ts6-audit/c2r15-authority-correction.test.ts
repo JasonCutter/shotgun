@@ -71,7 +71,7 @@ describe('C2-R15 regression-evidence authority correction', () => {
       TX_PARTICIPANT: 0,
       TX_DELEGATE: 0,
       NON_TX: 14,
-      TEST_ONLY_OR_DEAD: 13,
+      TEST_ONLY_OR_DEAD: 14,
       REVIEW_REQUIRED: 0,
     });
     // The frozen v2 fixture is a record of exactly this era: its OWN summary is
@@ -102,8 +102,8 @@ describe('C2-R15 regression-evidence authority correction', () => {
     expect(audit.counts).toMatchObject(expectedCounts);
     // The current audit includes reviewed VP-05 P0 transaction candidates; the
     // frozen v2 history above remains unchanged at its original inventory totals.
-    expect(audit.candidates).toHaveLength(144);
-    expect(audit.boundaries).toHaveLength(130);
+    expect(audit.candidates).toHaveLength(145);
+    expect(audit.boundaries).toHaveLength(131);
     expect(audit.rawTransactionSites).toHaveLength(21);
   }, 120_000);
 

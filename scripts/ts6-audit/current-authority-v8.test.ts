@@ -72,6 +72,24 @@ describe('T3-1 current authority and v8 lineage', () => {
     ).toBe(true);
   }, 120_000);
 
+  it('keeps the explicit-negative no-edge finalizer outside normal app reachability', () => {
+    const owner = buildAuditShape(ROOT).boundaries.find(
+      (boundary) =>
+        boundary.file === 'adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts' &&
+        boundary.method === 'completeRecordedNoEdge',
+    );
+    expect(owner).toBeDefined();
+    expect(owner?.productionReachability).toEqual({ status: 'TEST_ONLY_OR_DEAD', callers: [] });
+    expect(loadV8().regressionEvidence).toContainEqual(
+      expect.objectContaining({
+        file: 'tests/database/vp-explicit-negative-isolated.database.test.ts',
+        entrySymbol: 'completeRecordedNoEdge',
+        coverageKind: 'DIRECT_BOUNDARY',
+        covers: [owner!.boundaryId],
+      }),
+    );
+  }, 120_000);
+
   it('validates the v8 lineage against live AST and regression evidence authorities', () => {
     const result = validateCorpus(loadV8(), ROOT);
     expect(result.valid).toBe(true);

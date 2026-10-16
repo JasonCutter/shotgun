@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { PostgresVPRelationJobs } from '../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
 import {
   PostgresGlobalRelationBudget,
@@ -26,11 +26,13 @@ import { seedAssertion } from '../helpers/vp05-p0-fixtures.js';
 
 let db: IsolatedPostgresTestDatabase;
 let authorityDb: IsolatedPostgresTestDatabase;
+let secondDb: IsolatedPostgresTestDatabase;
 const storeId = randomUUID();
 const traces: unknown[] = [];
 beforeAll(async () => {
   db = await createIsolatedPostgresTestDatabase();
   authorityDb = await createIsolatedPostgresTestDatabase();
+  secondDb = await createIsolatedPostgresTestDatabase();
   await authorityDb
     .createPool()
     .query('INSERT INTO vp_global_budget.authority_store(store_id) VALUES($1)', [storeId]);
@@ -49,7 +51,7 @@ afterAll(async () => {
       2,
     ) + '\n',
   );
-  await Promise.all([db?.dispose(), authorityDb?.dispose()]);
+  await Promise.all([db?.dispose(), authorityDb?.dispose(), secondDb?.dispose()]);
 }, 120000);
 
 const decision = {
@@ -227,10 +229,23 @@ async function fixture(
   };
 }
 
+let currentFixture: Awaited<ReturnType<typeof fixture>>;
+let secondFixture: Awaited<ReturnType<typeof fixture>>;
+// Keep Docker transport and database construction outside the unchanged 5s behavior gate.
+beforeEach(async (context) => {
+  currentFixture = await fixture();
+  if (
+    context.task.name ===
+    'enforces the final daily slot across two independent workload databases and providers'
+  ) {
+    secondFixture = await fixture(secondDb, currentFixture);
+  }
+}, 30_000);
+
 it.each(['AUTHORITY_UNAVAILABLE', 'EXHAUSTED', 'GLOBAL_BIND_FAILURE'] as const)(
   'preserves the leased job on %s before activation',
   async (reason) => {
-    const f = await fixture();
+    const f = currentFixture;
     const reserve = vi.spyOn(f.budget, 'reserveAttempt');
     if (reason === 'EXHAUSTED')
       await f.authorityPool.query(
@@ -255,7 +270,7 @@ it.each(['AUTHORITY_UNAVAILABLE', 'EXHAUSTED', 'GLOBAL_BIND_FAILURE'] as const)(
 );
 
 it('records an armed unused claim recoverably when local activation fails', async () => {
-  const f = await fixture();
+  const f = currentFixture;
   const activate = vi
     .spyOn(f.jobs, 'claim')
     .mockRejectedValueOnce(new Error('simulated transaction rejection'));
@@ -277,7 +292,7 @@ it('records an armed unused claim recoverably when local activation fails', asyn
 });
 
 it('recovers a crash before global reservation without spending either counter', async () => {
-  const f = await fixture();
+  const f = currentFixture;
   const lease = await f.jobs.claimNext(f.revision);
   expect(lease?.attemptCount).toBe(0);
   expect((await f.state('CRASH_BEFORE_RESERVATION')).claimedCount).toBe(0);
@@ -294,7 +309,7 @@ it('recovers a crash before global reservation without spending either counter',
 });
 
 it('releases only an unarmed reservation after crash and restarts once', async () => {
-  const f = await fixture();
+  const f = currentFixture;
   const lease = (await f.jobs.claimNext(f.revision))!;
   const claim = await f.budget.reserveAttempt({
     workloadIdentity: f.projectId,
@@ -322,7 +337,7 @@ it('releases only an unarmed reservation after crash and restarts once', async (
 });
 
 it('never resends after actual fake egress and lost response persistence', async () => {
-  const f = await fixture();
+  const f = currentFixture;
   const save = vi
     .spyOn(f.jobs, 'storeOutput')
     .mockRejectedValueOnce(new Error('response commit unavailable'));
@@ -341,7 +356,7 @@ it('never resends after actual fake egress and lost response persistence', async
 });
 
 it('replays persisted output after worker loss even with a now-unavailable credential', async () => {
-  const f = await fixture();
+  const f = currentFixture;
   const complete = vi
     .spyOn(f.jobs, 'completeDecision')
     .mockRejectedValueOnce(new Error('worker terminated before finalization'));
@@ -362,7 +377,7 @@ it('replays persisted output after worker loss even with a now-unavailable crede
 });
 
 it('keeps a global execution arm one-use across independent workload ledgers', async () => {
-  const f = await fixture();
+  const f = currentFixture;
   const lease = (await f.jobs.claimNext(f.revision))!;
   const binding = {
     projectId: f.projectId,
@@ -398,10 +413,9 @@ it('keeps a global execution arm one-use across independent workload ledgers', a
 });
 
 it('enforces the final daily slot across two independent workload databases and providers', async () => {
-  const first = await fixture();
-  const secondDb = await createIsolatedPostgresTestDatabase();
-  try {
-    const second = await fixture(secondDb, first);
+  const first = currentFixture;
+  {
+    const second = secondFixture;
     expect(secondDb.databaseName).not.toBe(db.databaseName);
     await first.authorityPool.query(
       `INSERT INTO vp_global_budget.daily_usage(authority_id,budget_day,claimed_count) VALUES($1,vp_global_budget.current_budget_day(),99)`,
@@ -420,13 +434,11 @@ it('enforces the final daily slot across two independent workload databases and 
     expect(states.map((s) => s.local[0]?.attempt_count).sort()).toEqual([0, 1]);
     expect(states.map((s) => s.claimedCount)).toEqual([100, 100]);
     expect(states.map((s) => s.local[0]?.status).sort()).toEqual(['COMPLETED', 'RETRYABLE']);
-  } finally {
-    await secondDb.dispose();
   }
 });
 
 it('does not activate or call after a lost global execution-authorization acknowledgement', async () => {
-  const f = await fixture();
+  const f = currentFixture;
   const authorize = f.budget.authorizeExecution.bind(f.budget);
   const acknowledgement = vi
     .spyOn(f.budget, 'authorizeExecution')
@@ -448,7 +460,7 @@ it('does not activate or call after a lost global execution-authorization acknow
 });
 
 it('fences a durably activated attempt when the local activation acknowledgement is lost', async () => {
-  const f = await fixture();
+  const f = currentFixture;
   const activate = f.jobs.claim.bind(f.jobs);
   const acknowledgement = vi.spyOn(f.jobs, 'claim').mockImplementationOnce(async (input) => {
     await activate(input);

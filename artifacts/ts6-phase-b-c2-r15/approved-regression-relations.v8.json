@@ -14,7 +14,8 @@
     "2026-10-11 VP-05 P0: five existing VP method coordinates remapped with owning method/classification/reachability unchanged; eleven new source candidates audited (three global raw owners, seven lifecycle statements, one concrete expired-execution recovery owner). Added direct regression evidence for the new PROVEN recovery boundary. Validator rules and frozen v2-v7 inputs unchanged. See docs/implementation/vp05-p0-execution-authority-2026-10-11/ts6-coordinate-audit.md.",
     "2026-10-12 VP full completion delegated mechanical audit: 126 inherited transaction owners mapped uniquely by file/class/method/ownership kind with unchanged reachability; three new owners receive qualified DIRECT_BOUNDARY PostgreSQL evidence, including PORT_INFERRED source refresh and PROVEN Frontier ensure/status. New relations are implementation acceptance, not human semantic Gold; frozen v2-v7 and source digest unchanged. See docs/implementation/vp-full-completion-2026-10-12/reliability-ts6-coordinate-audit.md.",
     "2026-10-14 image-isolated current v8 audit: fifteen inherited SAFE_HELPER coordinates remapped with unchanged qualified grades; one new VP image-ledger append owner is PORT_INFERRED through a typed Port in runtime-test-only assembly. The new direct database concurrency/restart relation resolves to the concrete ledger. Frozen v7 source digest and historical artifacts are unchanged.",
-    "2026-10-15 execution-boundary correction: existing Stage4 owner coordinates remapped after lease parameterization; all candidate classifications/order, owner identities, qualified reachability and approved test identities unchanged. No new owner or semantic Gold; frozen v2-v7 unchanged. See live-execution-boundary-correction.md."
+    "2026-10-15 execution-boundary correction: existing Stage4 owner coordinates remapped after lease parameterization; all candidate classifications/order, owner identities, qualified reachability and approved test identities unchanged. No new owner or semantic Gold; frozen v2-v7 unchanged. See live-execution-boundary-correction.md.",
+    "2026-10-16 explicit-negative Fake-only storage: six existing VP job owners remapped uniquely by file/class/method/ownership with unchanged classification and qualified reachability. One opt-in no-edge finalizer is TEST_ONLY_OR_DEAD, not normal app reachability; its directly constructed PostgreSQL rejection test supplies the added regression relation. No validator, historical v2-v7 or frozen v7 source digest change. See explicit-negative-durable-2026-10-16.md."
   ],
   "records": [
     {
@@ -1031,7 +1032,7 @@
       "testEvidenceId": "test:tests/database/vp05-p0-crash.database.test.ts:preserves attempts across pre-activation crashes and fences an activated unknown egress",
       "file": "tests/database/vp05-p0-crash.database.test.ts",
       "testName": "preserves attempts across pre-activation crashes and fences an activated unknown egress",
-      "covers": ["safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:290"],
+      "covers": ["safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:292"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresVPRelationJobs.recoverExpiredExecutions",
       "path": ["PostgresVPRelationJobs.recoverExpiredExecutions"]
@@ -1071,6 +1072,15 @@
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresVPImageObservationLedger.append",
       "path": ["PostgresVPImageObservationLedger.append"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/vp-explicit-negative-isolated.database.test.ts:rejects a changed disposition and normal-v6 readback of the isolated output",
+      "file": "tests/database/vp-explicit-negative-isolated.database.test.ts",
+      "testName": "rejects a changed disposition and normal-v6 readback of the isolated output",
+      "covers": ["safe:adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts:47"],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "completeRecordedNoEdge",
+      "path": ["completeRecordedNoEdge"]
     }
   ]
 }

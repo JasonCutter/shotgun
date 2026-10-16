@@ -2,7 +2,7 @@
   "schemaVersion": "ts6.phase-b.current-authority-manifest.v8",
   "status": "FROZEN_BASELINE_EXPECTATIONS",
   "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
-  "reviewBasis": "Static expected classifications and reachability for the T3 source inventory, Source knowledge reset persistence, and Ask workspace read snapshot; source-coordinate updates require an audited function/method/classification/reachability match, and CI never rewrites this manifest. 2026-10-01 VP reconciliation: 11 inherited functions were matched to unchanged methods, classifications, and reachability; three added VP transaction candidates are recorded after auditing, with the claim/storeOutput closures inlined into owning Port methods. See docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md. 2026-10-02 URL freshness projection: ten existing candidate coordinates were remapped by functionKey after confirming unchanged owning methods, candidate kinds, classifications, and reachability; ten approved test relations were remapped to those same boundaries. No candidate was added or removed, and classification totals are unchanged. 2026-10-02 Ask page-location propagation moved four Ask adapter candidate coordinates; all four methods, classifications, and reachability grades were re-audited, with approved relation references updated. See the 2026-10-01 coordinate audit's 2026-10-02 addendum. 2026-10-12 VP full completion: 126 inherited owners retain qualified reachability and three actual new safe owners are inventoried; classifications derive as 19 TX_BOUNDARY, 92 PORT_INFERRED, 14 NON_TX, 18 TEST_ONLY_OR_DEAD. New direct PostgreSQL relations and current source coordinates are reviewed under delegated implementation authority. See docs/implementation/vp-full-completion-2026-10-12/reliability-ts6-coordinate-audit.md. 2026-10-14 image-isolated implementation: fifteen inherited SAFE_HELPER coordinates remapped by the same file/class/method/ownership with unchanged classification and qualified reachability. One new VP image-ledger append owner is PORT_INFERRED from the typed VPImageObservationLedgerPort caller in the runtime-test-only image assembly; this does not assert production activation. A directly constructed PostgreSQL ledger concurrency/restart test supplies the new regression relation. Frozen v2-v7 inputs, resolver rules and T3 base commit remain unchanged. 2026-10-15 execution-boundary correction: existing Stage4 owner coordinates remapped after lease parameterization; all candidate classifications/order, owner identities, qualified reachability and approved test identities unchanged. No new owner or semantic Gold; frozen v2-v7 unchanged. See live-execution-boundary-correction.md.",
+  "reviewBasis": "Static expected classifications and reachability for the T3 source inventory, Source knowledge reset persistence, and Ask workspace read snapshot; source-coordinate updates require an audited function/method/classification/reachability match, and CI never rewrites this manifest. 2026-10-01 VP reconciliation: 11 inherited functions were matched to unchanged methods, classifications, and reachability; three added VP transaction candidates are recorded after auditing, with the claim/storeOutput closures inlined into owning Port methods. See docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md. 2026-10-02 URL freshness projection: ten existing candidate coordinates were remapped by functionKey after confirming unchanged owning methods, candidate kinds, classifications, and reachability; ten approved test relations were remapped to those same boundaries. No candidate was added or removed, and classification totals are unchanged. 2026-10-02 Ask page-location propagation moved four Ask adapter candidate coordinates; all four methods, classifications, and reachability grades were re-audited, with approved relation references updated. See the 2026-10-01 coordinate audit's 2026-10-02 addendum. 2026-10-12 VP full completion: 126 inherited owners retain qualified reachability and three actual new safe owners are inventoried; classifications derive as 19 TX_BOUNDARY, 92 PORT_INFERRED, 14 NON_TX, 18 TEST_ONLY_OR_DEAD. New direct PostgreSQL relations and current source coordinates are reviewed under delegated implementation authority. See docs/implementation/vp-full-completion-2026-10-12/reliability-ts6-coordinate-audit.md. 2026-10-14 image-isolated implementation: fifteen inherited SAFE_HELPER coordinates remapped by the same file/class/method/ownership with unchanged classification and qualified reachability. One new VP image-ledger append owner is PORT_INFERRED from the typed VPImageObservationLedgerPort caller in the runtime-test-only image assembly; this does not assert production activation. A directly constructed PostgreSQL ledger concurrency/restart test supplies the new regression relation. Frozen v2-v7 inputs, resolver rules and T3 base commit remain unchanged. 2026-10-15 execution-boundary correction: existing Stage4 owner coordinates remapped after lease parameterization; all candidate classifications/order, owner identities, qualified reachability and approved test identities unchanged. No new owner or semantic Gold; frozen v2-v7 unchanged. See live-execution-boundary-correction.md. 2026-10-16 explicit-negative Fake-only storage: six existing VP job owners remapped uniquely by file/class/method/ownership with unchanged classification and qualified reachability. One opt-in no-edge finalizer is TEST_ONLY_OR_DEAD, not normal app reachability; its directly constructed PostgreSQL rejection test supplies the added regression relation. No validator, historical v2-v7 or frozen v7 source digest change. See explicit-negative-durable-2026-10-16.md.",
   "entries": [
     {
       "candidateId": "raw:adapters/postgres-stage4/src/index.ts:580",
@@ -661,6 +661,11 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts:47",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
       "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:172",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
@@ -681,32 +686,32 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:290",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:292",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:359",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:361",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:433",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:436",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:672",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:673",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:757",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:758",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:807",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:808",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     }

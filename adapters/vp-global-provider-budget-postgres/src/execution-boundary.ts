@@ -9,6 +9,7 @@ import {
   VPDecisionOutcomeUnknownError,
   type VPDecisionExecutionClaim,
   type VPDecisionExecutionRepositoryPort,
+  type VPRelationDecision,
 } from '../../../modules/vp-decision/src/index.js';
 import type { VPRelationJobWorker } from '../../../modules/vp-knowledge-ledger/src/index.js';
 import {
@@ -18,19 +19,20 @@ import {
 } from './index.js';
 
 type AttemptInput = Parameters<VPDecisionExecutionRepositoryPort['claim']>[0];
-export type ExecutionBoundRelationLedger = VPDecisionExecutionRepositoryPort & {
-  readExecution(input: AttemptInput): Promise<VPDecisionExecutionClaim | undefined>;
-  hasActivatedAttempt(input: {
-    readonly jobId: string;
-    readonly semanticAttemptId: string;
-    readonly globalClaimId: string;
-  }): Promise<boolean>;
-  pauseUnstarted?(input: {
-    readonly jobId: string;
-    readonly leaseToken: string;
-    readonly code: string;
-  }): Promise<void>;
-};
+export type ExecutionBoundRelationLedger<Output = VPRelationDecision> =
+  VPDecisionExecutionRepositoryPort<Output> & {
+    readExecution(input: AttemptInput): Promise<VPDecisionExecutionClaim<Output> | undefined>;
+    hasActivatedAttempt(input: {
+      readonly jobId: string;
+      readonly semanticAttemptId: string;
+      readonly globalClaimId: string;
+    }): Promise<boolean>;
+    pauseUnstarted?(input: {
+      readonly jobId: string;
+      readonly leaseToken: string;
+      readonly code: string;
+    }): Promise<void>;
+  };
 
 type Context = {
   readonly workloadIdentity: string;
@@ -58,9 +60,9 @@ const freezeTree = <T>(value: T): T => {
 };
 
 /** Reads old output without allocating a claim. New execution is activated at the provider boundary. */
-export function executionBoundRelationLedger(
-  ledger: ExecutionBoundRelationLedger,
-): VPDecisionExecutionRepositoryPort {
+export function executionBoundRelationLedger<Output>(
+  ledger: ExecutionBoundRelationLedger<Output>,
+): VPDecisionExecutionRepositoryPort<Output> {
   return {
     readStoredByJob: (input) => ledger.readStoredByJob?.(input) ?? Promise.resolve(undefined),
     claim: async (input) => {
@@ -84,9 +86,9 @@ export function executionBoundRelationLedger(
 }
 
 /** Resolve policy, model, credential revision, and credential fingerprint exactly once per attempt. */
-export function executionBoundRelationResolver(
+export function executionBoundRelationResolver<Output>(
   resolver: AIProviderExecutionResolverPort,
-  ledger: ExecutionBoundRelationLedger,
+  ledger: ExecutionBoundRelationLedger<Output>,
   budget: GlobalRelationBudgetPort,
   options: {
     readonly requiredProvider: string;
@@ -276,14 +278,14 @@ export function executionBoundRelationResolver(
   };
 }
 
-export class ExecutionBoundVPRelationDispatcher {
+export class ExecutionBoundVPRelationDispatcher<Output = VPRelationDecision> {
   private pauseReason: GlobalRelationBudgetPausedError['reason'] | undefined;
 
   constructor(
     private readonly worker: Pick<VPRelationJobWorker, 'dispatchOnce'>,
     private readonly budget: GlobalRelationBudgetPort,
     private readonly workloadIdentity: string,
-    private readonly ledger?: ExecutionBoundRelationLedger,
+    private readonly ledger?: ExecutionBoundRelationLedger<Output>,
   ) {}
 
   async dispatchOnce(): Promise<

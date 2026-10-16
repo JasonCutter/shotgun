@@ -1,3 +1,4 @@
+import type { VPRelationDecisionRequest } from './index.js';
 import { assertJsonSchema } from '../../../packages/contracts/src/index.js';
 import { VP_RELATION_CHOICES, VP_RELATION_DIRECTIONS } from './index.js';
 
@@ -86,4 +87,38 @@ export const classifyExplicitNegativeDeclaration = (
     return { status: 'WITHHELD', reason: 'CHOICE_PROBABILITY_BELOW_THRESHOLD', declaration };
   }
   return { status: declaration.choice === 'NO_RELATION' ? 'NO_RELATION' : 'DECIDED', declaration };
+};
+
+export type IsolatedRecord = {
+  readonly transportKind: 'ISOLATED_FAKE';
+  readonly policyRevision: typeof EXPLICIT_NEGATIVE_ISOLATED_REVISION;
+  readonly requestDigest: string;
+  readonly schemaDigest: string;
+  readonly providerIdentity: {
+    readonly provider: string;
+    readonly model: string;
+    readonly adapterVersion: string;
+    readonly dataPolicyVersion: string;
+  };
+  readonly providerObservation: {
+    readonly responseId: string | null;
+    readonly modelVersion: string | null;
+    readonly inputTokens: number | null;
+    readonly outputTokens: number | null;
+  } | null;
+  readonly rawResponse: string | null;
+  readonly disposition:
+    | ExplicitNegativeDisposition
+    | {
+        readonly status: 'INVALID';
+        readonly reason: 'OUTPUT_SCHEMA_INVALID' | 'PROVIDER_USAGE_INVALID';
+      }
+    | { readonly status: 'OUTCOME_UNKNOWN' };
+};
+
+export const EXPLICIT_NEGATIVE_DURABLE_CONTRACT = 'vp-explicit-negative-durable-fake-v1';
+export type DurableExplicitNegativeOutput = {
+  readonly contract: typeof EXPLICIT_NEGATIVE_DURABLE_CONTRACT;
+  readonly input: Omit<VPRelationDecisionRequest, 'execution'>;
+  readonly record: IsolatedRecord;
 };

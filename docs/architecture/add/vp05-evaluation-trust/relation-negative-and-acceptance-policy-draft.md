@@ -67,3 +67,34 @@ PostgreSQL 검증이 필요하다. 실제 credential/provider 경로로 우회�
 ## 6. 승인 범위와 이력
 
 사용자가 승인한 결정은 (a) RELATED를 유지하면서 NO_RELATION을 추가하는 새 정책의 **격리 설계·구현**, (b) 위 증거 수준을 유지하는 **제품 인수 Gate의 범위 정비**다. Gold 발행·운영 설정/DB/앱/worker 변경·실제 AI 호출·기존 실험 재개·push/PR/merge는 별개다. 기존 A1/A2/A3 원문과 선행 승인 이력은 보존한다.
+
+## 7. 2026-10-16 후속 지시 — 기준의 수정 가능성과 격리 저장 연결
+
+사용자는 “기준이 모호하고 불완전 하다면 기준을 바꿔야 된다. … 기준은 절대적이지
+않다. 감안하고 다음 작업 계속 해”라고 지시했다. 따라서 기준 준수만으로 발견된
+결함을 종결하지 않는다. 모호함·누락·측정 왜곡을 반례로 확인하고, 변경 이유·새
+적용 범위·기존 결과의 영향·검증 수준·이력을 기록하여 기준도 보완한다. 정답에
+맞추기 위한 사후 기준 변경이나 미검증을 검증 완료로 표시하는 것은 허용하지 않는다.
+과거 동결 결과는 당시 기준의 기록이며 현재 인증 결과로 재해석하지 않는다.
+
+§3의 첫 Fake-only 구현은 `a93dd216e`에 보존한다. 후속 격리 연결은 기존
+PostgreSQL relation jobs/provider-call 원장, 실제 `VPRelationJobWorker`, 전역
+reservation/activation dispatcher를 재사용한다. 기존 execution repository는
+versioned output codec을 명시 주입할 수 있게 하되 기본 v6 validator와 일반 앱
+선택은 유지한다. 새 router는 exact isolated revision 및 Fake identity만 허용한다.
+
+NO_RELATION·모델 기권·WITHHELD·INVALID는 입력/정책 digest·raw 응답·관측 usage와
+함께 기존 `relation_provider_calls.output_json`에 저장한다. no-edge 완료는 해당
+저장 결과·프로젝트·현재 pair·lease·claim binding을 확인한다. NO_RELATION을
+UNRESOLVED 영수증으로 위장하거나 positive edge를 만들지 않는다. 전용 테이블,
+새 authority, 생산 migration 또는 일반 app bootstrap 연결은 도입하지 않는다.
+
+이는 **격리 실행 결과 보존 계약**이며 negative를 현재 지식/Fact로 발행하는
+계약이 아니다. 기존 `decision_receipts`의 positive outcome 제약과
+`current_relations` view를 변경하지 않는다. 새 negative가 과거 positive를
+대체하는 활성 projection 및 일반 앱/Ask 노출은 아직 구현·검증하지 않았다.
+따라서 새 정책의 제품 전체 통합이나 운영 적용 완료로 보고하지 않는다.
+
+[후속 구현·검증 기록](../../../implementation/vp-full-completion-2026-10-12/explicit-negative-durable-2026-10-16.md)에
+성공·실패·재기동 및 exact source 범위를 남긴다. 사용자 개별 의미 검토 의무,
+실제 AI 호출, 과거 재채점, Git 게시와 운영 활성화는 추가하지 않는다.

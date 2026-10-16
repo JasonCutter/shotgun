@@ -1,0 +1,91 @@
+{
+  "record": "VP_FINAL_EVIDENCE_CLOSURE_20261016",
+  "authority": "LOCAL_OFFLINE_EVIDENCE_NOT_NEW_EVALUATION_AUTHORITY",
+  "subjectMain": "75c68210445d8184dee5986cfc048910fa667915",
+  "subjectTree": "121d5073f5d70e698ec4c0efe14e86024cf15f3e",
+  "newProviderCalls": 0,
+  "newCertifiedGold": 0,
+  "operatingChanges": 0,
+  "artifacts": [
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\offline-capture-reconciliation.mts",
+      "bytes": 14572,
+      "sha256": "c7bb7086ce7e5423049dff1daddbb3bc3f061bbdac1c2de0d8b6da9cd9e5b8cf"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\offline-capture-reconciliation-first.mts.snapshot",
+      "bytes": 13058,
+      "sha256": "29d1bc234ec9c1aac24a48dfcf8b8da0592478eb9299f629b363405fb8acbecd"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\offline-reconciliation-first.log",
+      "bytes": 850,
+      "sha256": "7ed0abf14d19e13c010df2b099a7d710dd21ba9b8c4fd5ba9a86db60153ef4dd"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\offline-reconciliation-final.log",
+      "bytes": 1297,
+      "sha256": "6cb7efa26edb7f056cc46f876549bd617dff15f2e1d6fdf5ed82105e47242f4f"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\offline-reconciliation.json",
+      "bytes": 16425,
+      "sha256": "c67037ba9e40f08af67637e0676a3845f15e81a191b7ae9fbc1a5122898fcc4e"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\reused-current-main-distribution.json",
+      "bytes": 1008,
+      "sha256": "f879adee946af64a3c691bbe85f0ab90a458acdf454fc25b7b189ea2588fa2dd"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\observe-installed-boundary.cjs",
+      "bytes": 2702,
+      "sha256": "8d3fa8e9a4a3d56d0ed89192f2803f47b6745876431a798e46e62fd8b5be586d"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\desktop-shortcut-readonly.json",
+      "bytes": 614,
+      "sha256": "9f92ad55835136f7de9e75267321532d424e43ff39386a6b7aaf70121b9da690"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\installed-launcher-readonly.json",
+      "bytes": 1081,
+      "sha256": "b65c2d2eb55ccf180bc23abe3fc28b83c23b39980d82110abfa2936c67111e5a"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\initial-unknown-observation.json",
+      "bytes": 507,
+      "sha256": "b93ee4f81440b31fdaf0846524f34038eac0f6cc96fcde3fcb0b03e8504853a9"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\runtime-byte-equivalence.json",
+      "bytes": 1232,
+      "sha256": "79e8ae602f3cda226b57d48708d93366d17146ba04612e8897966639b6e4c592"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\verify-runtime-byte-equivalence.cjs",
+      "bytes": 1284,
+      "sha256": "155b229f689fbbee36c973c2bf9d5866738c03237baa8e4b56514b8e1a19a1a2"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\prepare-actual-wire-review.cjs",
+      "bytes": 6687,
+      "sha256": "f3451afd2bf598133867be394222f5cdb4cf809d1060302791e6964f9710b451"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\actual-wire-review-input.candidate.json",
+      "bytes": 8549,
+      "sha256": "5b34119c9bb752eab701feb92e1bf59dba7717daa42ef9c379e28f746c4777e3"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\actual-wire-review-provenance.json",
+      "bytes": 1909,
+      "sha256": "b3afcb566b046277fe035adc25a3973d2b4e3131092f9860f489e78a90b248dd"
+    },
+    {
+      "path": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\final-evidence-closure-20261016\\review-packet-verification.json",
+      "bytes": 1058,
+      "sha256": "3eb0aa09a5357bfc29bceae81492b6718cd58d4ff1dfbbe1bcbe5be2a8547292"
+    }
+  ]
+}

@@ -222,3 +222,26 @@ push·PR·merge 및 다음 작업 단계는 자동 착수하지 않는다.
 보존한다. [원인·보정·최종 검증](./ts6-timeout-correction-2026-10-15.md)에 정확한
 증거와 적용 범위를 기록한다. 로컬 검증이며 Canonical 게시·운영 적용이나 VP
 전체 완료 판정은 아니다.
+
+### 2026-10-16 — PR389 Canonical 완료와 잔여 인수 증거 대조
+
+PR388/389의 별도 승인·병합과 main75의 post-merge CI로 이전 TS5·TS6 및
+게시 Gate를 확인했다. PR389 merge는 `75c68210445d8184dee5986cfc048910fa667915`,
+tree는 승인 head와 같은 `121d5073f5d70e698ec4c0efe14e86024cf15f3e`다.
+[CI38829565062](https://github.com/JasonCutter/shotgun/actions/runs/38829565062)의
+Quality·Frontend·Required Gates, PostgreSQL748 PASS/2 기존 SKIP 및 표준 TS6
+53/53 PASS를 재사용한다. 과거 실패·UNKNOWN·STOP은 보존한다.
+
+추가 실호출 없이 응답9건을 실제 저장 실행/usage와 대조했다. 확인된 보고 토큰은
+6,916이며 이전 가능한 UNKNOWN1과 총10회 상한 잔여0을 유지한다. 실행 완료와
+관계 채택을 분리하고 실제 relation claim1만 기존 accounting helper에 연결했다.
+또한 같은 main CI의 runtime875파일 fresh distribution·정상 Fake 제품·재시작
+검증을 재사용했다. 실제 desktop launcher는 정적 읽기만 수행했다.
+
+[잔여 Gate 대조](./acceptance-evidence-closure-2026-10-16.md)에 원본/저장 대조,
+7개 negative check, 최초 auditor 상태 오인의 보정과 정확한 미검증 범위를 남겼다.
+실제 wire의 null Evidence context를 보충하지 않은 외부 검토용 CANDIDATE1도
+준비했고, 입력 변경·정답 누출·자동 인증 등을 막는5개 negative check를 통과했다.
+새 인증 Gold0·실청구 N/A·Windows 운영 설치/reboot 미실행은 그대로다. 운영
+checkout·DB·권위·설정·worker를 변경하지 않았으며 추가 provider 호출도0이다.
+**VP_FINAL_ACCEPTANCE_NOT_COMPLETE / PRODUCTION_HOLD**를 유지한다.

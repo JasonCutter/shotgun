@@ -51,6 +51,9 @@ export const createVPFullApplicationFixture = async (
     answerFake?: (
       request: Parameters<FakeAIProviderAdapter['generateStructured']>[0],
     ) => Promise<Awaited<ReturnType<FakeAIProviderAdapter['generateStructured']>>>;
+    relationFake?: (
+      request: Parameters<FakeAIProviderAdapter['generateStructured']>[0],
+    ) => Promise<Awaited<ReturnType<FakeAIProviderAdapter['generateStructured']>>>;
     isolatedRelationPolicy?: {
       readonly revision: string;
       readonly expectedPreviousRevision: string | null;
@@ -145,6 +148,7 @@ export const createVPFullApplicationFixture = async (
         await held.release;
       }
       if (kind === 'relation') {
+        if (options.relationFake) return options.relationFake(request);
         const choice = prompt.left!.claim === prompt.right!.claim ? 'EQUIVALENT' : 'RELATED';
         const choices = [
           'EQUIVALENT',
@@ -418,6 +422,27 @@ export const createVPFullApplicationFixture = async (
           throw new Error(`Answer did not succeed: ${run.state}/${run.failure?.code}`);
         return run.state === 'SUCCEEDED' ? run : undefined;
       }, 'same AnswerRun');
+    const restart = async (policy?: {
+      revision: string;
+      expectedPreviousRevision: string | null;
+    }) => {
+      await app!.close();
+      app = await startApp(policy);
+      await app.listen();
+      const bootstrap = await app.server.inject({
+        method: 'POST',
+        url: '/api/v1/session/local-bootstrap',
+        headers: { host: '127.0.0.1' },
+        payload: {},
+      });
+      expect(bootstrap.statusCode).toBeLessThan(300);
+      const setCookie = bootstrap.headers['set-cookie'];
+      cookie = String(Array.isArray(setCookie) ? setCookie[0] : setCookie).split(';')[0]!;
+      csrf = (await request<{ csrfToken: string }>('GET', '/api/v1/security/csrf')).csrfToken;
+      await request('POST', '/api/v1/session/active-project', { projectId });
+      csrf = (await request<{ csrfToken: string }>('GET', '/api/v1/security/csrf')).csrfToken;
+      return app;
+    };
     return {
       pool,
       authority,
@@ -426,27 +451,8 @@ export const createVPFullApplicationFixture = async (
       storeId,
       authorityId,
       relationFake,
-      restartWithRelationPolicy: async (policy: {
-        revision: string;
-        expectedPreviousRevision: string | null;
-      }) => {
-        await app!.close();
-        app = await startApp(policy);
-        await app.listen();
-        const bootstrap = await app.server.inject({
-          method: 'POST',
-          url: '/api/v1/session/local-bootstrap',
-          headers: { host: '127.0.0.1' },
-          payload: {},
-        });
-        expect(bootstrap.statusCode).toBeLessThan(300);
-        const setCookie = bootstrap.headers['set-cookie'];
-        cookie = String(Array.isArray(setCookie) ? setCookie[0] : setCookie).split(';')[0]!;
-        csrf = (await request<{ csrfToken: string }>('GET', '/api/v1/security/csrf')).csrfToken;
-        await request('POST', '/api/v1/session/active-project', { projectId });
-        csrf = (await request<{ csrfToken: string }>('GET', '/api/v1/security/csrf')).csrfToken;
-        return app;
-      },
+      restart,
+      restartWithRelationPolicy: restart,
       calls,
       request,
       requestRaw: async (method: 'GET' | 'POST', url: string, payload?: Record<string, unknown>) =>

@@ -6,9 +6,10 @@ PR392는 `main@c58ea548b0aa4024f8a9243f4bff7cf941be3ec3`로 병합됐고
 main CI38942714053의 Quality·Frontend·Required Gates가 SUCCESS다. 아래 로컬/
 PUBLICATION_HOLD 표시는 당시 이력이며 이 병합을 부정하지 않는다.
 [negative Ledger 제품 연결안](./negative-ledger-product-integration-proposal.md)은
-기존 실행 결과 저장을 current knowledge/Ask로 연결하기 위한 **미채택 후보**다.
-중요한 지식 계약의 별도 승인 전에는 receipt/projection/schema나 정상 앱 정책을
-변경하지 않는다. 운영 전환·실호출·새 Gold와 동결 결과 재채점도 하지 않는다.
+기존 실행 결과 저장을 current knowledge/Ask로 연결하기 위해 작성한 후보였다.
+후속 사용자 **“Negative Ledger·Ask 격리 구현 승인”**에 따라 Fake-only 로컬
+receipt/projection/schema와 실제 app/Ask 연결을 구현한다. 정상 앱 정책 활성화와
+운영 전환·실호출·새 Gold·동결 결과 재채점·게시 승인은 포함하지 않는다.
 
 ## 2026-10-16 로컬 평가 표시 보완
 

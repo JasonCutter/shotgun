@@ -4,6 +4,11 @@ import { VP_RELATION_CHOICES, VP_RELATION_DIRECTIONS } from './index.js';
 
 /** Opt-in isolated contract. The production v6 choice set and policy are unchanged. */
 export const EXPLICIT_NEGATIVE_ISOLATED_REVISION = 'vp-relation-v6-explicit-negative-isolated-v1';
+export const EXPLICIT_NEGATIVE_PRODUCT_FAKE_CONTRACT = 'vp-explicit-negative-product-fake-v1';
+const PRODUCT_FAKE_REVISION =
+  /^vp-relation-v6-explicit-negative-product-fake-v1:r[1-9][0-9]{0,8}$/u;
+export const isProductExplicitNegativeRevision = (revision: string): boolean =>
+  PRODUCT_FAKE_REVISION.test(revision);
 export const EXPLICIT_NEGATIVE_CHOICES = [...VP_RELATION_CHOICES, 'NO_RELATION'] as const;
 export type ExplicitNegativeChoice = (typeof EXPLICIT_NEGATIVE_CHOICES)[number];
 export type ExplicitNegativeDeclaration = {
@@ -91,7 +96,7 @@ export const classifyExplicitNegativeDeclaration = (
 
 export type IsolatedRecord = {
   readonly transportKind: 'ISOLATED_FAKE';
-  readonly policyRevision: typeof EXPLICIT_NEGATIVE_ISOLATED_REVISION;
+  readonly policyRevision: string;
   readonly requestDigest: string;
   readonly schemaDigest: string;
   readonly providerIdentity: {
@@ -118,7 +123,8 @@ export type IsolatedRecord = {
 
 export const EXPLICIT_NEGATIVE_DURABLE_CONTRACT = 'vp-explicit-negative-durable-fake-v1';
 export type DurableExplicitNegativeOutput = {
-  readonly contract: typeof EXPLICIT_NEGATIVE_DURABLE_CONTRACT;
+  readonly contract:
+    typeof EXPLICIT_NEGATIVE_DURABLE_CONTRACT | typeof EXPLICIT_NEGATIVE_PRODUCT_FAKE_CONTRACT;
   readonly input: Omit<VPRelationDecisionRequest, 'execution'>;
   readonly record: IsolatedRecord;
 };

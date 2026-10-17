@@ -346,3 +346,18 @@ quiescence/schema/credential/worker 승인 경계를 유지한다. 전체 VP 최
 A/B/수정본·질문3·Fake7·재시작 보존 PASS를 기록한다. Negative 지식 연결은
 아직 후보 계약이며 운영 icon/reboot는 미실행이다. 기존 증거·운영 환경을
 보존하고 격리 자원을 정리했다. 새 core contract 승인 요청과 Git 게시 승인은 별개다.
+
+### 2026-10-17 — 승인된 Negative Ledger·Ask 격리 구현
+
+후속 사용자가 **“Negative Ledger·Ask 격리 구현 승인”**을 명시했다. 앞선 후보/미승인
+표현은 작성 당시 이력이다. 기존 Ledger/epoch/history/current 관계와 실제 앱·Ask를
+Fake 전용 product revision으로 연결하며 정상 v6/0.9와 운영 OFF는 유지한다.
+새 revision CAS fence·SourceVersion commit lock·call-linked receipt·정확한 readback과
+T3 FK 순서를 보완했다. [구현·검증 보고](./negative-ledger-product-2026-10-17.md)에서
+성공·초기 실패·UI 제외·남은 운영/의미 검증을 구분한다. 게시·운영 활성화·실AI와
+전체 VP 최종 인수 완료를 이번 승인으로 확장하지 않는다.
+
+로컬 종료 검증은 관련 unit/contract221·PostgreSQL68 PASS/기존 opt-in SKIP1·
+TS6 65와 release·정적/문서 Gate PASS다. 기본 v6 실제 앱3개, 새 negative 앱과
+독립 full replay, UNKNOWN/동시 확정/ACK 유실·migration/T3를 포함한다. 운영 OFF·
+보호 파일79개·타 worktree13개·기존 sealed packet4개153파일을 보존했다.

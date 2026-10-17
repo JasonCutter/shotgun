@@ -3,7 +3,7 @@
   "baseSha": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
   "derivedFrom": {
     "parentArtifact": "artifacts/ts6-phase-b-c2-r15/approved-regression-relations.v8.json",
-    "parentSha256": "0a2db6272156056d48d0d997eb2edf57a68e5f55046657fd8bc57c66a6d1d9ca",
+    "parentSha256": "40c24beec4487399a1581e5e821e075c2e874f39ade3afc0b07de4af16722785",
     "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
     "authorityVersion": "ts6.phase-b.current-authority-manifest.v8"
   },
@@ -1434,7 +1434,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 5,
+      "legacyRecordedCallers": 6,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -2095,7 +2095,7 @@
             "bindingPort": null,
             "bindingVia": "value of discoveryRuntimeRepository is the declared return type of a helper",
             "receiverType": "PostgresDiscoveryRuntimeRepository",
-            "line": 1138,
+            "line": 1199,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -2140,7 +2140,7 @@
             "bindingPort": null,
             "bindingVia": "value of discoveryRuntimeRepository is the declared return type of a helper",
             "receiverType": "PostgresDiscoveryRuntimeRepository",
-            "line": 1159,
+            "line": 1220,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -4598,7 +4598,7 @@
             "bindingPort": null,
             "bindingVia": "value of sourcesProductService is the declared return type of a helper",
             "receiverType": "PostgresSourcesProductService",
-            "line": 1627,
+            "line": 1688,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -5340,7 +5340,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 5,
+      "legacyRecordedCallers": 6,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -5385,7 +5385,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 3,
+      "legacyRecordedCallers": 4,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -7008,7 +7008,7 @@
             "bindingPort": null,
             "bindingVia": "value of knowledgeResetPersistence is the declared return type of a helper",
             "receiverType": "PostgresKnowledgeResetPersistence",
-            "line": 1356,
+            "line": 1417,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -7058,7 +7058,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 5,
+      "legacyRecordedCallers": 6,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -7094,7 +7094,70 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:172",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:102",
+      "file": "adapters/vp-knowledge-postgres/src/frontier-store.ts",
+      "symbol": "PostgresCandidateFrontier",
+      "method": "ensure",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async ensure(policy: string, projectId?: string): Promise<void> {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts",
+            "symbol": "new PostgresCandidateFrontier(this.isolatedPool, 3).ensure",
+            "callExpression": "new PostgresCandidateFrontier(this.isolatedPool, 3).ensure(...)",
+            "callNeedle": "new PostgresCandidateFrontier(this.isolatedPool, 3).ensure(",
+            "bindingEvidence": [
+              "async ensure(policy: string, projectId?: string): Promise<void> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/vp-candidate-frontier.database.test.ts:persists empty completeness instead of returning an unpersisted random identity:PostgresCandidateFrontier.ensure"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "constructed in the call",
+            "receiverType": "PostgresCandidateFrontier",
+            "line": 129,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+            "symbol": "new PostgresCandidateFrontier(this.pool, this.maxAttemptsPerJob).ensure",
+            "callExpression": "new PostgresCandidateFrontier(this.pool, this.maxAttemptsPerJob).ensure(...)",
+            "callNeedle": "new PostgresCandidateFrontier(this.pool, this.maxAttemptsPerJob).ensure(",
+            "bindingEvidence": [
+              "async ensure(policy: string, projectId?: string): Promise<void> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/vp-candidate-frontier.database.test.ts:persists empty completeness instead of returning an unpersisted random identity:PostgresCandidateFrontier.ensure"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "constructed in the call",
+            "receiverType": "PostgresCandidateFrontier",
+            "line": 295,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 4,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/vp-candidate-frontier.database.test.ts:persists empty completeness instead of returning an unpersisted random identity:PostgresCandidateFrontier.ensure"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:176",
       "file": "adapters/vp-knowledge-postgres/src/frontier-store.ts",
       "symbol": "PostgresCandidateFrontier",
       "method": "status",
@@ -7124,63 +7187,18 @@
             "bindingPort": null,
             "bindingVia": "constructed in the call",
             "receiverType": "PostgresCandidateFrontier",
-            "line": 284,
+            "line": 299,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
       },
-      "legacyRecordedCallers": 5,
+      "legacyRecordedCallers": 6,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
       },
       "regressionEvidenceIds": [
         "test:tests/database/vp-candidate-frontier.database.test.ts:persists empty completeness instead of returning an unpersisted random identity:PostgresCandidateFrontier.status"
-      ]
-    },
-    {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:98",
-      "file": "adapters/vp-knowledge-postgres/src/frontier-store.ts",
-      "symbol": "PostgresCandidateFrontier",
-      "method": "ensure",
-      "ownership": {
-        "kind": "SAFE_HELPER",
-        "primitive": "withSafePostgresTransaction"
-      },
-      "sourceEvidence": {
-        "declarationNeedle": "async ensure(policy: string): Promise<void> {",
-        "transactionNeedle": "withSafePostgresTransaction"
-      },
-      "productionReachability": {
-        "status": "PROVEN",
-        "callers": [
-          {
-            "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
-            "symbol": "new PostgresCandidateFrontier(this.pool, this.maxAttemptsPerJob).ensure",
-            "callExpression": "new PostgresCandidateFrontier(this.pool, this.maxAttemptsPerJob).ensure(...)",
-            "callNeedle": "new PostgresCandidateFrontier(this.pool, this.maxAttemptsPerJob).ensure(",
-            "bindingEvidence": [
-              "async ensure(policy: string): Promise<void> {"
-            ],
-            "regressionEvidenceIds": [
-              "test:tests/database/vp-candidate-frontier.database.test.ts:persists empty completeness instead of returning an unpersisted random identity:PostgresCandidateFrontier.ensure"
-            ],
-            "bindingKind": "DIRECT",
-            "bindingPort": null,
-            "bindingVia": "constructed in the call",
-            "receiverType": "PostgresCandidateFrontier",
-            "line": 280,
-            "evidenceGrade": "DIRECT_CALLER"
-          }
-        ]
-      },
-      "legacyRecordedCallers": 3,
-      "ackLossPolicy": {
-        "kind": "PROPAGATE_UNKNOWN",
-        "evidence": "existing safe transaction helper outcome contract"
-      },
-      "regressionEvidenceIds": [
-        "test:tests/database/vp-candidate-frontier.database.test.ts:persists empty completeness instead of returning an unpersisted random identity:PostgresCandidateFrontier.ensure"
       ]
     },
     {
@@ -7257,7 +7275,7 @@
             "bindingPort": "VPKnowledgeLedgerPort",
             "bindingVia": "field ledger of VPAssertionLedgerWorker declared as VPKnowledgeLedgerPort",
             "receiverType": "VPKnowledgeLedgerPort",
-            "line": 375,
+            "line": 389,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -7270,7 +7288,115 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:292",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts:234",
+      "file": "adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts",
+      "symbol": "PostgresIsolatedNegativeKnowledgeJobs",
+      "method": "finish",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "return this.finish({ jobId: input.jobId, leaseToken: input.leaseToken, positive: input });",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts",
+            "symbol": "this.finish",
+            "callExpression": "this.finish(...)",
+            "callNeedle": "this.finish(",
+            "bindingEvidence": [
+              "return this.finish({ jobId: input.jobId, leaseToken: input.leaseToken, positive: input });"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/vp-negative-knowledge-product.database.test.ts:reads the committed negative once and rejects a conflicting outcome replay:PostgresIsolatedNegativeKnowledgeJobs.finish"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresIsolatedNegativeKnowledgeJobs",
+            "receiverType": "PostgresIsolatedNegativeKnowledgeJobs",
+            "line": 142,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts",
+            "symbol": "this.finish",
+            "callExpression": "this.finish(...)",
+            "callNeedle": "this.finish(",
+            "bindingEvidence": [
+              "return this.finish({ jobId: input.jobId, leaseToken: input.leaseToken, positive: input });"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/vp-negative-knowledge-product.database.test.ts:reads the committed negative once and rejects a conflicting outcome replay:PostgresIsolatedNegativeKnowledgeJobs.finish"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresIsolatedNegativeKnowledgeJobs",
+            "receiverType": "PostgresIsolatedNegativeKnowledgeJobs",
+            "line": 150,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 7,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/vp-negative-knowledge-product.database.test.ts:reads the committed negative once and rejects a conflicting outcome replay:PostgresIsolatedNegativeKnowledgeJobs.finish"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts:66",
+      "file": "adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts",
+      "symbol": "PostgresIsolatedNegativeKnowledgeJobs",
+      "method": "bindPolicy",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async bindPolicy(input: {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "assemblies/shotgun-app/src/application.ts",
+            "symbol": "productJobs.bindPolicy",
+            "callExpression": "productJobs.bindPolicy(...)",
+            "callNeedle": "productJobs.bindPolicy(",
+            "bindingEvidence": [
+              "async bindPolicy(input: {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/vp-negative-knowledge-product.database.test.ts:makes binding idempotent, compare-and-set, and non-reusable with one epoch/history per revision:PostgresIsolatedNegativeKnowledgeJobs.bindPolicy"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "value of productJobs is the declared return type of a helper",
+            "receiverType": "PostgresIsolatedNegativeKnowledgeJobs",
+            "line": 1734,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 1,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/vp-negative-knowledge-product.database.test.ts:makes binding idempotent, compare-and-set, and non-reusable with one epoch/history per revision:PostgresIsolatedNegativeKnowledgeJobs.bindPolicy"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:307",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "recoverExpiredExecutions",
@@ -7279,7 +7405,7 @@
         "primitive": "withSafePostgresTransaction"
       },
       "sourceEvidence": {
-        "declarationNeedle": "async recoverExpiredExecutions(): Promise<void> {",
+        "declarationNeedle": "async recoverExpiredExecutions(projectId?: string): Promise<void> {",
         "transactionNeedle": "withSafePostgresTransaction"
       },
       "productionReachability": {
@@ -7291,7 +7417,7 @@
             "callExpression": "this.recoverExpiredExecutions(...)",
             "callNeedle": "this.recoverExpiredExecutions(",
             "bindingEvidence": [
-              "async recoverExpiredExecutions(): Promise<void> {"
+              "async recoverExpiredExecutions(projectId?: string): Promise<void> {"
             ],
             "regressionEvidenceIds": [
               "test:tests/database/vp05-p0-crash.database.test.ts:preserves attempts across pre-activation crashes and fences an activated unknown egress"
@@ -7300,8 +7426,26 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresVPRelationJobs",
             "receiverType": "PostgresVPRelationJobs",
-            "line": 360,
+            "line": 381,
             "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "assemblies/shotgun-app/src/application.ts",
+            "symbol": "productJobs.recoverExpiredExecutions",
+            "callExpression": "productJobs.recoverExpiredExecutions(...)",
+            "callNeedle": "productJobs.recoverExpiredExecutions(",
+            "bindingEvidence": [
+              "async recoverExpiredExecutions(projectId?: string): Promise<void> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/vp05-p0-crash.database.test.ts:preserves attempts across pre-activation crashes and fences an activated unknown egress"
+            ],
+            "bindingKind": "PORT",
+            "bindingPort": "PostgresIsolatedNegativeKnowledgeJobs",
+            "bindingVia": "value of productJobs is the declared return type of a helper",
+            "receiverType": "PostgresIsolatedNegativeKnowledgeJobs",
+            "line": 1737,
+            "evidenceGrade": "PORT_INFERRED"
           },
           {
             "file": "assemblies/shotgun-app/src/application.ts",
@@ -7309,7 +7453,7 @@
             "callExpression": "vpRelationJobs.recoverExpiredExecutions(...)",
             "callNeedle": "vpRelationJobs.recoverExpiredExecutions(",
             "bindingEvidence": [
-              "async recoverExpiredExecutions(): Promise<void> {"
+              "async recoverExpiredExecutions(projectId?: string): Promise<void> {"
             ],
             "regressionEvidenceIds": [
               "test:tests/database/vp05-p0-crash.database.test.ts:preserves attempts across pre-activation crashes and fences an activated unknown egress"
@@ -7318,12 +7462,12 @@
             "bindingPort": null,
             "bindingVia": "value of vpRelationJobs is the declared return type of a helper",
             "receiverType": "PostgresVPRelationJobs",
-            "line": 1660,
+            "line": 1808,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
       },
-      "legacyRecordedCallers": 2,
+      "legacyRecordedCallers": 4,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -7333,7 +7477,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:361",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:382",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "claimNext",
@@ -7361,12 +7505,12 @@
             "bindingPort": "VPRelationJobStorePort",
             "bindingVia": "field jobs of VPRelationJobWorker declared as VPRelationJobStorePort",
             "receiverType": "VPRelationJobStorePort",
-            "line": 143,
+            "line": 144,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 5,
+      "legacyRecordedCallers": 6,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -7374,7 +7518,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:436",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:457",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "claim",
@@ -7402,7 +7546,7 @@
             "bindingPort": "VPDecisionExecutionRepositoryPort",
             "bindingVia": "field executions of DurableIsolatedExplicitNegativeRouter declared as VPDecisionExecutionRepositoryPort",
             "receiverType": "VPDecisionExecutionRepositoryPort",
-            "line": 151,
+            "line": 182,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -7447,7 +7591,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:673",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:694",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "storeOutput",
@@ -7475,7 +7619,7 @@
             "bindingPort": "VPDecisionExecutionRepositoryPort",
             "bindingVia": "field executions of DurableIsolatedExplicitNegativeRouter declared as VPDecisionExecutionRepositoryPort",
             "receiverType": "VPDecisionExecutionRepositoryPort",
-            "line": 169,
+            "line": 199,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -7520,7 +7664,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:758",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:779",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "markOutcomeUnknown",
@@ -7548,7 +7692,7 @@
             "bindingPort": "VPDecisionExecutionRepositoryPort",
             "bindingVia": "field executions of DurableIsolatedExplicitNegativeRouter declared as VPDecisionExecutionRepositoryPort",
             "receiverType": "VPDecisionExecutionRepositoryPort",
-            "line": 173,
+            "line": 203,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -7593,7 +7737,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:808",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:829",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "completeDecision",
@@ -7621,7 +7765,7 @@
             "bindingPort": "VPRelationJobStorePort",
             "bindingVia": "field jobs of VPRelationJobWorker declared as VPRelationJobStorePort",
             "receiverType": "VPRelationJobStorePort",
-            "line": 290,
+            "line": 303,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -7637,7 +7781,7 @@
             "bindingPort": "VPRelationJobStorePort",
             "bindingVia": "field jobs of VPRelationJobWorker declared as VPRelationJobStorePort",
             "receiverType": "VPRelationJobStorePort",
-            "line": 309,
+            "line": 323,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9533,20 +9677,7 @@
       "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts:47"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:172",
-      "c2r1Classification": "SAFE_HELPER",
-      "c2r2Classification": "TX_BOUNDARY",
-      "file": "adapters/vp-knowledge-postgres/src/frontier-store.ts",
-      "symbol": "PostgresCandidateFrontier",
-      "method": "status",
-      "reason": "A production call site names the concrete boundary receiver.",
-      "productionReachable": true,
-      "transactionOwner": true,
-      "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:172"
-    },
-    {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:98",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:102",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
       "file": "adapters/vp-knowledge-postgres/src/frontier-store.ts",
@@ -9556,7 +9687,20 @@
       "productionReachable": true,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:98"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:102"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:176",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/vp-knowledge-postgres/src/frontier-store.ts",
+      "symbol": "PostgresCandidateFrontier",
+      "method": "status",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:176"
     },
     {
       "candidateId": "safe:adapters/vp-knowledge-postgres/src/image-observations.ts:83",
@@ -9585,7 +9729,33 @@
       "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/index.ts:114"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:292",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts:234",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts",
+      "symbol": "PostgresIsolatedNegativeKnowledgeJobs",
+      "method": "finish",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts:234"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts:66",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts",
+      "symbol": "PostgresIsolatedNegativeKnowledgeJobs",
+      "method": "bindPolicy",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts:66"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:307",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -9595,10 +9765,10 @@
       "productionReachable": true,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:292"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:307"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:361",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:382",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -9608,10 +9778,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:361"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:382"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:436",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:457",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -9621,10 +9791,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:436"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:457"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:673",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:694",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -9634,10 +9804,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:673"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:694"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:758",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:779",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -9647,10 +9817,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:758"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:779"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:808",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:829",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -9660,7 +9830,7 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:808"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:829"
     }
   ],
   "historicalReconciliation": [
@@ -11837,7 +12007,7 @@
       "file": "tests/database/vp05-p0-crash.database.test.ts",
       "testName": "preserves attempts across pre-activation crashes and fences an activated unknown egress",
       "covers": [
-        "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:292"
+        "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:307"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresVPRelationJobs.recoverExpiredExecutions",
@@ -11863,7 +12033,7 @@
       "file": "tests/database/vp-candidate-frontier.database.test.ts",
       "testName": "persists empty completeness instead of returning an unpersisted random identity",
       "covers": [
-        "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:98"
+        "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:102"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresCandidateFrontier.ensure",
@@ -11876,7 +12046,7 @@
       "file": "tests/database/vp-candidate-frontier.database.test.ts",
       "testName": "persists empty completeness instead of returning an unpersisted random identity",
       "covers": [
-        "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:172"
+        "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:176"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresCandidateFrontier.status",
@@ -11909,6 +12079,33 @@
       "path": [
         "completeRecordedNoEdge"
       ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/vp-negative-knowledge-product.database.test.ts:makes binding idempotent, compare-and-set, and non-reusable with one epoch/history per revision:PostgresIsolatedNegativeKnowledgeJobs.bindPolicy",
+      "file": "tests/database/vp-negative-knowledge-product.database.test.ts",
+      "testName": "makes binding idempotent, compare-and-set, and non-reusable with one epoch/history per revision",
+      "covers": [
+        "safe:adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts:66"
+      ],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "bindPolicy",
+      "path": [
+        "PostgresIsolatedNegativeKnowledgeJobs.bindPolicy"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/vp-negative-knowledge-product.database.test.ts:reads the committed negative once and rejects a conflicting outcome replay:PostgresIsolatedNegativeKnowledgeJobs.finish",
+      "file": "tests/database/vp-negative-knowledge-product.database.test.ts",
+      "testName": "reads the committed negative once and rejects a conflicting outcome replay",
+      "covers": [
+        "safe:adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts:234"
+      ],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "completeRecordedNoEdge",
+      "path": [
+        "PostgresIsolatedNegativeKnowledgeJobs.completeRecordedNoEdge",
+        "PostgresIsolatedNegativeKnowledgeJobs.finish"
+      ]
     }
   ],
   "historical": {
@@ -11917,16 +12114,16 @@
     "c2r1CandidateRows": 120
   },
   "summary": {
-    "TX_BOUNDARY": 19,
+    "TX_BOUNDARY": 21,
     "PORT_INFERRED": 93,
     "TX_PARTICIPANT": 0,
     "TX_DELEGATE": 0,
     "NON_TX": 14,
     "TEST_ONLY_OR_DEAD": 19,
     "REVIEW_REQUIRED": 0,
-    "c2r1CandidateRecords": 145,
-    "uniqueCandidateIdentities": 145,
-    "reconciliationTotal": 145,
+    "c2r1CandidateRecords": 147,
+    "uniqueCandidateIdentities": 147,
+    "reconciliationTotal": 147,
     "historicalRows": 87,
     "historicalRowsExplained": 87,
     "historicalRowsUnexplained": 0

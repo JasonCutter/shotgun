@@ -22,6 +22,7 @@ import {
 import { StandingAIProcessingPolicyService } from '../../packages/policy/src/index.js';
 import type { AskAnswerRunSnapshot } from '../../packages/contracts/src/index.js';
 import { startShotgunApplication } from '../../assemblies/shotgun-app/src/application.js';
+import { IsolatedFakeExplicitNegativeProvider } from '../../assemblies/shotgun-app/src/isolated-negative-fake-provider.js';
 import { createIsolatedPostgresTestDatabase } from './isolated-postgres-test-database.js';
 
 export const waitForProduct = async <T>(
@@ -50,6 +51,11 @@ export const createVPFullApplicationFixture = async (
     answerFake?: (
       request: Parameters<FakeAIProviderAdapter['generateStructured']>[0],
     ) => Promise<Awaited<ReturnType<FakeAIProviderAdapter['generateStructured']>>>;
+    isolatedRelationPolicy?: {
+      readonly revision: string;
+      readonly expectedPreviousRevision: string | null;
+      readonly fakeProvider?: IsolatedFakeExplicitNegativeProvider;
+    };
   } = {},
 ) => {
   for (const name of ['.env', '.env.test']) {
@@ -77,6 +83,10 @@ export const createVPFullApplicationFixture = async (
     csrf = '',
     networkAttempts = 0;
   const fake = new FakeAIProviderAdapter();
+  const relationFake = options.isolatedRelationPolicy
+    ? (options.isolatedRelationPolicy.fakeProvider ??
+      new IsolatedFakeExplicitNegativeProvider('isolated-fake-vp-full-app'))
+    : undefined;
   const calls: { kind: 'relation' | 'answer' | 'extraction'; digest: string }[] = [];
   let answerGate: { entered: () => void; release: Promise<void> } | undefined;
   const fingerprint = createHash('sha256').update(key).digest('hex');
@@ -167,8 +177,12 @@ export const createVPFullApplicationFixture = async (
       storeId,
     ]);
     await authority.query(
-      "INSERT INTO vp_global_budget.policies(authority_id,provider,account_fingerprint,workload_class,budget_timezone,daily_limit) VALUES($1,'deepseek',$2,'VP_RELATION','UTC',100)",
-      [authorityId, fingerprint],
+      "INSERT INTO vp_global_budget.policies(authority_id,provider,account_fingerprint,workload_class,budget_timezone,daily_limit) VALUES($1,$2,$3,'VP_RELATION','UTC',100)",
+      [
+        authorityId,
+        relationFake ? 'isolated-fake' : 'deepseek',
+        relationFake?.accountFingerprint ?? fingerprint,
+      ],
     );
     const owner = await new PostgresAuthRepository(pool).bootstrapLocalOwnerPrincipal({
       accountId: 'local-owner',
@@ -228,23 +242,46 @@ export const createVPFullApplicationFixture = async (
         `INSERT INTO ${table}(project_id,provider_id,approved,approval_revision,reviewed_by,reviewed_at) VALUES($1,'deepseek',true,1,$2,clock_timestamp())`,
         [projectId, owner.principalId],
       );
-    app = await startShotgunApplication({
-      databaseUrl: db.databaseUrl,
-      environmentProfile: 'runtime-test',
-      assetRoot,
-      stagingSecret: 'SYNTHETIC-VP-FULL-STAGING-SECRET-32',
-      host: '127.0.0.1',
-      port: 0,
-      noSignals: true,
-      disableAskWorker: false,
-      sourceRefreshIntervalMs: options.sourceRefresh ? 1000 : false,
-      recoveryIntervalMs: false,
-      actionFeedbackOutboxIntervalMs: false,
-      aiDurableMaterializationRecoveryEnabled: false,
-      ...(options.imageObservationFakeHttp
-        ? { imageObservationFakeHttp: options.imageObservationFakeHttp }
-        : {}),
-    });
+    const startApp = async (policy = options.isolatedRelationPolicy) =>
+      startShotgunApplication({
+        databaseUrl: db.databaseUrl,
+        environmentProfile: 'runtime-test',
+        assetRoot,
+        stagingSecret: 'SYNTHETIC-VP-FULL-STAGING-SECRET-32',
+        host: '127.0.0.1',
+        port: 0,
+        noSignals: true,
+        disableAskWorker: false,
+        sourceRefreshIntervalMs: options.sourceRefresh ? 1000 : false,
+        recoveryIntervalMs: false,
+        actionFeedbackOutboxIntervalMs: false,
+        aiDurableMaterializationRecoveryEnabled: false,
+        ...(options.imageObservationFakeHttp
+          ? { imageObservationFakeHttp: options.imageObservationFakeHttp }
+          : {}),
+        ...(policy && relationFake
+          ? {
+              isolatedRelationPolicy: {
+                mode: 'ISOLATED_FAKE' as const,
+                revision: policy.revision,
+                expectedPreviousRevision: policy.expectedPreviousRevision,
+                projectId,
+                fakeProvider: relationFake,
+                accountFingerprint: relationFake.accountFingerprint,
+                executionIdentity: {
+                  providerId: relationFake.identity.provider,
+                  modelId: relationFake.identity.model,
+                  aiConfigurationRevision: 1,
+                  credentialId: relationFake.accountId,
+                  credentialRevision: 1,
+                  policyContextRevision: 'isolated-fake-product-v1',
+                  providerPolicyFingerprint: `sha256:${relationFake.accountFingerprint}`,
+                },
+              },
+            }
+          : {}),
+      });
+    app = await startApp();
     await app.listen();
     expect(app.askWorkerStarted).toBe(true);
     const bootstrap = await app.server.inject({
@@ -388,6 +425,28 @@ export const createVPFullApplicationFixture = async (
       projectId,
       storeId,
       authorityId,
+      relationFake,
+      restartWithRelationPolicy: async (policy: {
+        revision: string;
+        expectedPreviousRevision: string | null;
+      }) => {
+        await app!.close();
+        app = await startApp(policy);
+        await app.listen();
+        const bootstrap = await app.server.inject({
+          method: 'POST',
+          url: '/api/v1/session/local-bootstrap',
+          headers: { host: '127.0.0.1' },
+          payload: {},
+        });
+        expect(bootstrap.statusCode).toBeLessThan(300);
+        const setCookie = bootstrap.headers['set-cookie'];
+        cookie = String(Array.isArray(setCookie) ? setCookie[0] : setCookie).split(';')[0]!;
+        csrf = (await request<{ csrfToken: string }>('GET', '/api/v1/security/csrf')).csrfToken;
+        await request('POST', '/api/v1/session/active-project', { projectId });
+        csrf = (await request<{ csrfToken: string }>('GET', '/api/v1/security/csrf')).csrfToken;
+        return app;
+      },
       calls,
       request,
       requestRaw: async (method: 'GET' | 'POST', url: string, payload?: Record<string, unknown>) =>

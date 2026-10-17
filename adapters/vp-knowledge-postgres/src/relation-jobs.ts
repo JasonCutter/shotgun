@@ -166,6 +166,13 @@ const pairJoins = `
   LEFT JOIN project_admin.project_knowledge_epoch AS reset_epoch
     ON reset_epoch.project_id = job.project_id`;
 
+/** Adapter-local reuse keeps commit-time input checks identical to leasing. */
+export const currentRelationPairReadModel = {
+  projection: pairProjection,
+  joins: pairJoins,
+  assertion,
+};
+
 /** All pair selection and writes are scoped to current, immutable Evidence. */
 export class PostgresVPRelationJobs<Output = VPRelationDecision>
   implements VPRelationJobStorePort, VPDecisionExecutionRepositoryPort<Output>
@@ -193,7 +200,11 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
     }
   }
 
-  async enqueueCurrentPairs(policyRevision: string, limit = 32): Promise<number> {
+  async enqueueCurrentPairs(
+    policyRevision: string,
+    limit = 32,
+    projectId?: string,
+  ): Promise<number> {
     if (!policyRevision.trim()) throw new Error('VP relation policy revision is required.');
     // A newer SourceVersion can retire either assertion while a provider call is in flight.
     // Keep the old job for audit but prevent its result from becoming current knowledge.
@@ -203,6 +214,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
               lease_expires_at = NULL, next_attempt_at = NULL,
               updated_at = clock_timestamp()
         WHERE job.status IN ('PENDING', 'RUNNING', 'RETRYABLE', 'FAILED')
+          AND ($1::text IS NULL OR job.project_id = $1)
           AND NOT EXISTS (
             SELECT 1 FROM project_admin.project_knowledge_epoch AS reset_epoch
              WHERE reset_epoch.project_id = job.project_id
@@ -217,6 +229,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
              WHERE current_right.project_id = job.project_id
                AND current_right.assertion_id = job.right_assertion_id
           ))`,
+      [projectId ?? null],
     );
     if (limit === 0) return 0;
     const result = await this.pool.query<{ job_id: string }>(
@@ -235,6 +248,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
          LEFT JOIN project_admin.project_knowledge_epoch AS reset_epoch
            ON reset_epoch.project_id = left_claim.project_id
         WHERE (reset_epoch.state IS NULL OR reset_epoch.state = 'READY')
+          AND ($6::text IS NULL OR left_claim.project_id = $6)
           AND NOT EXISTS (
             SELECT 1
               FROM vp.relations AS exact_relation
@@ -269,6 +283,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
         this.maxDailyProviderAttempts,
         this.maxAttemptsPerJob,
         this.globalAuthorityRequired,
+        projectId ?? null,
       ],
     );
     return result.rowCount ?? 0;
@@ -288,7 +303,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
   }
 
   /** Recovery does not need a provider credential or global authorization. */
-  async recoverExpiredExecutions(): Promise<void> {
+  async recoverExpiredExecutions(projectId?: string): Promise<void> {
     await withSafePostgresTransaction(
       this.pool,
       async (client) => {
@@ -299,6 +314,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
                   updated_at = clock_timestamp()
              FROM vp.relation_jobs AS job
             WHERE job.project_id = provider_call.project_id
+              AND ($1::text IS NULL OR job.project_id = $1)
               AND job.job_id = provider_call.job_id
               AND job.status = 'RUNNING'
               AND job.lease_expires_at <= clock_timestamp()
@@ -309,6 +325,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
                  WHERE reset_epoch.project_id = job.project_id
                    AND reset_epoch.state <> 'READY'
               )`,
+          [projectId ?? null],
         );
         await client.query(
           `UPDATE vp.relation_jobs AS job
@@ -317,6 +334,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
                   last_failure_code = 'PROVIDER_OUTCOME_UNKNOWN',
                   updated_at = clock_timestamp()
             WHERE job.status = 'RUNNING'
+              AND ($1::text IS NULL OR job.project_id = $1)
               AND job.lease_expires_at <= clock_timestamp()
               AND EXISTS (
                 SELECT 1 FROM vp.relation_provider_calls AS provider_call
@@ -329,6 +347,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
                  WHERE reset_epoch.project_id = job.project_id
                    AND reset_epoch.state <> 'READY'
               )`,
+          [projectId ?? null],
         );
         await client.query(
           `UPDATE vp.relation_jobs AS job
@@ -337,6 +356,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
                   last_failure_code = COALESCE(job.last_failure_code, 'MAX_ATTEMPTS_EXCEEDED'),
                   updated_at = clock_timestamp()
             WHERE job.attempt_count >= job.max_attempts
+              AND ($1::text IS NULL OR job.project_id = $1)
               AND (job.status IN ('PENDING', 'RETRYABLE')
                 OR (job.status = 'RUNNING' AND job.lease_expires_at <= clock_timestamp()))
               AND NOT EXISTS (
@@ -350,6 +370,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
                  WHERE reset_epoch.project_id = job.project_id
                    AND reset_epoch.state <> 'READY'
               )`,
+          [projectId ?? null],
         );
       },
       { module: 'vp-knowledge-postgres', operation: 'recover-relation-executions' },
@@ -357,7 +378,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
   }
 
   async claimNext(policyRevision: string, projectId?: string): Promise<VPRelationJob | undefined> {
-    await this.recoverExpiredExecutions();
+    await this.recoverExpiredExecutions(projectId);
     return withSafePostgresTransaction(
       this.pool,
       async (client) => {
@@ -910,9 +931,9 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
   async readDecisionOutcome(input: {
     readonly jobId: string;
     readonly leaseToken: string;
-  }): Promise<'COMPLETED' | 'LEASE_ACTIVE' | 'NOT_ACTIVE'> {
+  }): Promise<'COMPLETED' | 'SUPERSEDED' | 'LEASE_ACTIVE' | 'NOT_ACTIVE'> {
     const result = await this.pool.query<{
-      readonly outcome: 'COMPLETED' | 'LEASE_ACTIVE' | 'NOT_ACTIVE';
+      readonly outcome: 'COMPLETED' | 'SUPERSEDED' | 'LEASE_ACTIVE' | 'NOT_ACTIVE';
     }>(
       `SELECT CASE
           WHEN job.status = 'COMPLETED'
@@ -934,6 +955,7 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
                 AND relation.relation_kind IN ('EQUIVALENT', 'SUPPORTS', 'QUALIFIES', 'CONTRADICTS', 'RELATED')
            )
             THEN 'COMPLETED'
+          WHEN job.status = 'SUPERSEDED' THEN 'SUPERSEDED'
           WHEN job.status = 'RUNNING'
            AND job.lease_token = $2
            AND job.lease_expires_at > clock_timestamp()

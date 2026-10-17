@@ -1,12 +1,14 @@
 # VP-05 — NO_RELATION 제품 연결 보완안
 
-**CANDIDATE / CORE CONTRACT APPROVAL REQUIRED / PRODUCTION HOLD — 2026-10-17**
+**ISOLATED IMPLEMENTATION APPROVED / LOCAL IMPLEMENTATION / PRODUCTION HOLD — 2026-10-17**
 
 기준 Canonical은 `c58ea548b0aa4024f8a9243f4bff7cf941be3ec3`다. PR392는
 승인 head `5fb78d1ec84f6a0503bb2de79d0bd92a54a964ef`와 같은 tree로 병합됐고
 [main CI38942714053](https://github.com/JasonCutter/shotgun/actions/runs/38942714053)의
 Quality·Frontend·Required Gates가 SUCCESS다. 앞선 PUBLICATION_PENDING과
-MERGE_HOLD는 당시 이력이다. 이 문서는 아직 채택된 제품 계약이 아니다.
+MERGE_HOLD는 당시 이력이다. 작성 당시 이 문서는 미채택 후보였으며,
+이후 사용자의 **“Negative Ledger·Ask 격리 구현 승인”**으로 아래 격리 구현을
+승인받았다. 이 승인은 운영 정책 활성화나 Canonical 게시 승인이 아니다.
 
 ## 1. 입증할 제품 공백
 
@@ -111,8 +113,10 @@ Ask는 기존 `current_relations` Port를 통해 철회를 반영한다. Negativ
 집합이 바뀌면 기존 Ask snapshot/freshness 재검사를 따른다. 과거 답변의 원문과
 citation을 수정하지 않는다.
 
-UI는 기존 관계/처리 상태를 표시하는 위치에서 관계 없음·판단 불가·확률 보류·실패를
-구분한다. 사용자에게 관계 승인·모델 선택·수동 재시도 동작을 추가하지 않는다.
+원장과 실행 기록에서 관계 없음·판단 불가·확률 보류·실패를 구분한다.
+구현 감사 결과 현재 VP 화면에는 pair별 관계 처리 상태를 표시하는 위치가 없다.
+이번 연결에서 새 상태 API/화면을 추가하지 않으며, 이 구분을 UI에서도 제공했다는
+주장은 하지 않는다. 사용자에게 관계 승인·모델 선택·수동 재시도 동작을 추가하지 않는다.
 Fake 답변으로 실제 AI가 negative의 의미를 정확히 이해한다고 인증하지 않는다.
 
 ## 5. 실행 범위 — 첫 제품 연결도 격리 Fake로 한정
@@ -177,3 +181,27 @@ AGENTS §0 및 전체 실행 지시 §6에 따른 명시 승인 후 구현·채�
 Windows 설치본의 격리 Fake 검증은 독립적으로 계속할 수 있다. 운영 shortcut,
 schema131–139, credential/config, 정상 app/worker 및 OS reboot의 최종 전환 인수는
 기존 운영 HOLD와 exact release/백업/runner quiescence Gate를 유지한다.
+
+## 9. 승인 후 구현 구체화와 검토 보완 — 2026-10-17
+
+- 새 product Fake revision `vp-relation-v6-explicit-negative-product-fake-v1:rN`과
+  output contract `vp-explicit-negative-product-fake-v1`을 사용한다. 과거 실행 전용
+  `vp-relation-v6-explicit-negative-isolated-v1` 기록은 자동 승격하지 않는다.
+- 기존 `vp.project_epochs`에 project별 binding을 추가하고 CAS·재사용 금지·동일
+  epoch history로 회전을 기록한다. Receipt/history/edge와 binding은 같은 epoch
+  row lock을 사용한다. 늦은 옛 revision은 stored output을 보존하고 SUPERSEDED다.
+- Source 최신성은 기존 intake writer가 잠그는 Source row를 ID 순서대로 잠근 뒤
+  current assertions/Evidence를 다시 읽어 commit까지 보호한다. 새 freshness 권위는 없다.
+- 승인된 negative는 receipt/history만 추가한다. 기존 positive row는 보존하고
+  current view에서 epoch 순서로 철회한다. 새 revision의 positive로 복원할 수 있다.
+  NULL binding인 기존 프로젝트의 unresolved veto는 그대로다. Product-bound
+  프로젝트의 deterministic exact edge는 AI negative와 unresolved veto로 숨기지 않는다.
+- 완료 readback은 job와 원래 stored call의 전체 declaration·모델·token·pair·방향·
+  receipt/history를 비교한다. 완료 후 lease는 권한 증빙으로 사용하지 않는다.
+  복구 lease가 원래 attempt와 달라도 원래 call/claim/attempt를 재사용한다.
+- 프로젝트 한정 worker의 expired-execution 복구도 같은 project로 제한한다.
+  SQL guard는 변경된 digest/usage/confidence/방향의 발행을 거부한다.
+- Migration140은 additive다. 기존 T3 owner의 authorization·원자성을 재사용하며,
+  새 provider-call FK에 맞게 history→edge→receipt를 먼저 지운다. 운영에는 미적용이다.
+
+자세한 검증·초기 실패·제한은 [격리 구현 보고](../../../implementation/vp-full-completion-2026-10-12/negative-ledger-product-2026-10-17.md)에 기록한다.

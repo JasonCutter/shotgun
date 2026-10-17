@@ -8,6 +8,7 @@ import {
   classifyExplicitNegativeDeclaration,
   EXPLICIT_NEGATIVE_ISOLATED_REVISION,
   EXPLICIT_NEGATIVE_RESPONSE_SCHEMA,
+  isProductExplicitNegativeRevision,
   parseExplicitNegativeDeclaration,
   type IsolatedRecord,
 } from '../../../modules/vp-decision/src/explicit-negative-isolated.js';
@@ -21,9 +22,17 @@ export const EXPLICIT_NEGATIVE_SYSTEM_INSTRUCTION =
 export type { IsolatedRecord } from '../../../modules/vp-decision/src/explicit-negative-isolated.js';
 /** Not a production VPDecisionProviderPort: it cannot be wired into the normal worker. */
 export class IsolatedExplicitNegativeAdapter {
-  constructor(private readonly fake: AIProviderAdapterPort) {
+  constructor(
+    private readonly fake: AIProviderAdapterPort,
+    private readonly profile?: { readonly mode: 'PRODUCT_FAKE'; readonly revision: string },
+  ) {
     if (fake.identity.provider !== 'isolated-fake')
       throw new Error('Explicit-negative experiment requires an isolated Fake provider.');
+    if (
+      profile &&
+      (profile.mode !== 'PRODUCT_FAKE' || !isProductExplicitNegativeRevision(profile.revision))
+    )
+      throw new Error('Invalid explicit-negative product Fake profile.');
   }
 
   async compareIsolated(
@@ -32,7 +41,8 @@ export class IsolatedExplicitNegativeAdapter {
   ): Promise<IsolatedRecord> {
     if (mode !== 'ISOLATED_FAKE' || this.fake.identity.provider !== 'isolated-fake')
       throw new Error('Explicit-negative transport is not isolated Fake.');
-    if (input.policyRevision !== EXPLICIT_NEGATIVE_ISOLATED_REVISION || input.execution)
+    const revision = this.profile?.revision ?? EXPLICIT_NEGATIVE_ISOLATED_REVISION;
+    if (input.policyRevision !== revision || input.execution)
       throw new Error('Explicit-negative revision mismatch or production execution supplied.');
     const captured = structuredClone(input);
     assertVPDecisionEgress(captured);
@@ -52,8 +62,7 @@ export class IsolatedExplicitNegativeAdapter {
     });
     const base = {
       transportKind: 'ISOLATED_FAKE' as const,
-      policyRevision:
-        EXPLICIT_NEGATIVE_ISOLATED_REVISION as typeof EXPLICIT_NEGATIVE_ISOLATED_REVISION,
+      policyRevision: revision,
       schemaDigest: sha256Text(stableJson(schema)),
       providerIdentity,
       providerObservation: null,

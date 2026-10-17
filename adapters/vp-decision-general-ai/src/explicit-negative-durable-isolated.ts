@@ -11,6 +11,8 @@ import {
   EXPLICIT_NEGATIVE_RESPONSE_SCHEMA,
   parseExplicitNegativeDeclaration,
   EXPLICIT_NEGATIVE_DURABLE_CONTRACT,
+  EXPLICIT_NEGATIVE_PRODUCT_FAKE_CONTRACT,
+  isProductExplicitNegativeRevision,
   type DurableExplicitNegativeOutput,
 } from '../../../modules/vp-decision/src/explicit-negative-isolated.js';
 import type { VPRelationDecisionPort } from '../../../modules/vp-knowledge-ledger/src/index.js';
@@ -23,14 +25,32 @@ import {
 /** Byte/shape consistency only; does not establish that a model's semantic judgement is true. */
 export const validDurableExplicitNegativeOutput = (
   output: DurableExplicitNegativeOutput,
+): boolean =>
+  validExplicitNegativeOutput(
+    output,
+    EXPLICIT_NEGATIVE_ISOLATED_REVISION,
+    EXPLICIT_NEGATIVE_DURABLE_CONTRACT,
+  );
+
+/** Product Fake output has a separate contract and an exact, caller-pinned revision. */
+export const validProductExplicitNegativeOutput = (
+  output: DurableExplicitNegativeOutput,
+  revision: string,
+): boolean =>
+  isProductExplicitNegativeRevision(revision) &&
+  validExplicitNegativeOutput(output, revision, EXPLICIT_NEGATIVE_PRODUCT_FAKE_CONTRACT);
+
+const validExplicitNegativeOutput = (
+  output: DurableExplicitNegativeOutput,
+  revision: string,
+  contract: DurableExplicitNegativeOutput['contract'],
 ): boolean => {
   try {
-    if (output.contract !== EXPLICIT_NEGATIVE_DURABLE_CONTRACT || 'execution' in output.input)
-      return false;
+    if (output.contract !== contract || 'execution' in output.input) return false;
     assertVPDecisionEgress(output.input);
     const { record, input } = output;
     if (
-      input.policyRevision !== EXPLICIT_NEGATIVE_ISOLATED_REVISION ||
+      input.policyRevision !== revision ||
       record.policyRevision !== input.policyRevision ||
       record.transportKind !== 'ISOLATED_FAKE' ||
       record.providerIdentity.provider !== 'isolated-fake' ||
@@ -95,11 +115,22 @@ export class DurableIsolatedExplicitNegativeRouter implements VPRelationDecision
   constructor(
     private readonly resolver: AIProviderExecutionResolverPort,
     private readonly executions: VPDecisionExecutionRepositoryPort<DurableExplicitNegativeOutput>,
-  ) {}
+    private readonly profile?: { readonly mode: 'PRODUCT_FAKE'; readonly revision: string },
+  ) {
+    if (
+      profile &&
+      (profile.mode !== 'PRODUCT_FAKE' || !isProductExplicitNegativeRevision(profile.revision))
+    )
+      throw new Error('Invalid explicit-negative product Fake profile.');
+  }
 
   async resolve(input: VPRelationDecisionRequest): ReturnType<VPRelationDecisionPort['resolve']> {
     assertVPDecisionEgress(input);
-    if (input.policyRevision !== EXPLICIT_NEGATIVE_ISOLATED_REVISION || !input.execution)
+    const revision = this.profile?.revision ?? EXPLICIT_NEGATIVE_ISOLATED_REVISION;
+    const contract = this.profile
+      ? EXPLICIT_NEGATIVE_PRODUCT_FAKE_CONTRACT
+      : EXPLICIT_NEGATIVE_DURABLE_CONTRACT;
+    if (input.policyRevision !== revision || !input.execution)
       throw new Error('Durable isolated policy requires its exact revision and lease.');
     const captured = structuredClone(input);
     const { execution, ...semanticInput } = captured;
@@ -124,18 +155,18 @@ export class DurableIsolatedExplicitNegativeRouter implements VPRelationDecision
       ) as VPRelationDecisionRequest['left']['sensitivity'],
     });
     // Fail before claim or activation; no live provider identity may enter this experiment.
-    const comparison = new IsolatedExplicitNegativeAdapter(adapter);
+    const comparison = new IsolatedExplicitNegativeAdapter(adapter, this.profile);
     const providerIdentity = `${adapter.identity.provider}/${adapter.identity.model}`;
     const executionKey = sha256Text(
       stableJson({
-        contract: EXPLICIT_NEGATIVE_DURABLE_CONTRACT,
+        contract,
         providerIdentity: adapter.identity,
         executionIdentity,
       }),
     );
     const requestDigest = sha256Text(
       stableJson({
-        contract: EXPLICIT_NEGATIVE_DURABLE_CONTRACT,
+        contract,
         semanticInput,
         executionIdentity,
         systemInstruction: EXPLICIT_NEGATIVE_SYSTEM_INSTRUCTION,
@@ -160,12 +191,11 @@ export class DurableIsolatedExplicitNegativeRouter implements VPRelationDecision
       if (record.disposition.status === 'OUTCOME_UNKNOWN')
         throw new VPDecisionOutcomeUnknownError();
       const output = {
-        contract: EXPLICIT_NEGATIVE_DURABLE_CONTRACT,
+        contract,
         input: semanticInput,
         record,
       } as const;
-      if (!validDurableExplicitNegativeOutput(output))
-        throw new Error('Isolated output integrity failed.');
+      if (!this.validOutput(output)) throw new Error('Isolated output integrity failed.');
       const saved = await this.executions.storeOutput({ ...identity, decision: output });
       return this.project(saved, semanticInput);
     } catch {
@@ -185,10 +215,7 @@ export class DurableIsolatedExplicitNegativeRouter implements VPRelationDecision
     output: DurableExplicitNegativeOutput,
     input: DurableExplicitNegativeOutput['input'],
   ): Awaited<ReturnType<VPRelationDecisionPort['resolve']>> {
-    if (
-      !validDurableExplicitNegativeOutput(output) ||
-      stableJson(output.input) !== stableJson(input)
-    )
+    if (!this.validOutput(output) || stableJson(output.input) !== stableJson(input))
       throw new Error('Stored isolated input or output identity mismatch.');
     const { disposition, providerObservation, providerIdentity } = output.record;
     if (disposition.status === 'OUTCOME_UNKNOWN') return { status: 'OUTCOME_UNKNOWN' };
@@ -212,5 +239,11 @@ export class DurableIsolatedExplicitNegativeRouter implements VPRelationDecision
         outputTokens: providerObservation!.outputTokens!,
       },
     };
+  }
+
+  private validOutput(output: DurableExplicitNegativeOutput): boolean {
+    return this.profile
+      ? validProductExplicitNegativeOutput(output, this.profile.revision)
+      : validDurableExplicitNegativeOutput(output);
   }
 }

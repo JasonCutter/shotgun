@@ -14,6 +14,7 @@ export const seedAssertion = async (
     text: string;
     sourceText?: string;
     assetRoot?: string;
+    materialize?: boolean;
   },
 ): Promise<void> => {
   const sourceId = randomUUID();
@@ -132,11 +133,12 @@ export const seedAssertion = async (
      VALUES ($1, $2, 1, $3, $4, 'READY', '[]'::jsonb, now())`,
     [randomUUID(), candidateId, projectId, sourceVersionId],
   );
-  await pool.query(
-    `INSERT INTO vp.assertions
+  if (input.materialize !== false)
+    await pool.query(
+      `INSERT INTO vp.assertions
        (assertion_id, project_id, candidate_id, source_id, source_version_id,
         evidence_id, claim_text, origin, access_scope, sensitivity, created_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, 'DIRECT_SOURCE', '{owner}', 'public', now())`,
-    [assertionId, projectId, candidateId, sourceId, sourceVersionId, evidenceId, text],
-  );
+      [assertionId, projectId, candidateId, sourceId, sourceVersionId, evidenceId, text],
+    );
 };

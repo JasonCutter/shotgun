@@ -87,12 +87,16 @@ export class PostgresCandidateFrontier {
     private readonly pool: Pool,
     private readonly maxAttempts: number,
   ) {}
-  async ensure(policy: string): Promise<void> {
+  async ensure(policy: string, projectId?: string): Promise<void> {
     if (!policy.trim()) throw new Error('Frontier policy revision is required.');
     const projects = (
-      await this.pool.query<{ id: string }>(`SELECT project.id FROM project_admin.projects project
+      await this.pool.query<{ id: string }>(
+        `SELECT project.id FROM project_admin.projects project
       LEFT JOIN project_admin.project_knowledge_epoch reset ON reset.project_id=project.id
-      WHERE project.active AND project.status='ACTIVE' AND (reset.state IS NULL OR reset.state='READY') ORDER BY project.id`)
+      WHERE project.active AND project.status='ACTIVE' AND (reset.state IS NULL OR reset.state='READY')
+        AND ($1::text IS NULL OR project.id=$1) ORDER BY project.id`,
+        [projectId ?? null],
+      )
     ).rows;
     for (const project of projects)
       await withSafePostgresTransaction(

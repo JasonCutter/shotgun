@@ -52,12 +52,22 @@ type EventRow = QueryResultRow & {
   readonly relation_ids: string[];
   readonly source_version_id: string | null;
   readonly batch_id: string | null;
+  readonly decision_id: string | null;
+  readonly policy_revision: string | null;
 };
 type RelationRow = QueryResultRow & {
   readonly relation_id: string;
   readonly left_assertion_id: string;
   readonly right_assertion_id: string;
   readonly decision_created_at: Date;
+  readonly decision_id: string;
+  readonly method: string;
+  readonly task_kind: string;
+};
+type NegativeRow = QueryResultRow & {
+  readonly decision_id: string;
+  readonly left_assertion_id: string;
+  readonly right_assertion_id: string;
 };
 type UnresolvedRow = QueryResultRow & {
   readonly left_assertion_id: string;
@@ -142,6 +152,8 @@ export async function verifyVPProjectionReplay(
     readonly assertionEventsMatch: boolean;
     readonly emptyBatchEventsMatch: boolean;
     readonly relationEventsMatch: boolean;
+    readonly negativeEventsMatch: boolean;
+    readonly policyBindingMatches: boolean;
   };
 }> {
   const client = await pool.connect();
@@ -211,7 +223,9 @@ export async function verifyVPProjectionReplay(
       await client.query<EventRow>(
         `SELECT history.epoch::text, history.event_kind,
                 history.assertion_id::text, history.relation_ids::text[],
-                history.source_version_id::text, history.batch_id::text
+                history.source_version_id::text, history.batch_id::text,
+                to_jsonb(history)->>'decision_id' AS decision_id,
+                to_jsonb(history)->>'policy_revision' AS policy_revision
            FROM vp.history_events AS history
           WHERE history.project_id = $1 ORDER BY history.epoch`,
         [projectId],
@@ -221,12 +235,20 @@ export async function verifyVPProjectionReplay(
       await client.query<RelationRow>(
         `SELECT relation.relation_id::text, relation.left_assertion_id::text,
                 relation.right_assertion_id::text,
-                decision.created_at AS decision_created_at
+                decision.created_at AS decision_created_at,
+                decision.decision_id::text, decision.method, decision.task_kind
            FROM vp.relations AS relation
            JOIN vp.decision_receipts AS decision
              ON decision.project_id = relation.project_id
             AND decision.decision_id = relation.decision_id
           WHERE relation.project_id = $1`,
+        [projectId],
+      )
+    ).rows;
+    const negatives = (
+      await client.query<NegativeRow>(
+        `SELECT decision_id::text,left_assertion_id::text,right_assertion_id::text
+       FROM vp.decision_receipts WHERE project_id=$1 AND outcome='NO_RELATION'`,
         [projectId],
       )
     ).rows;
@@ -282,8 +304,12 @@ export async function verifyVPProjectionReplay(
         )
       ).rows[0]?.count ?? 0,
     );
-    const epochRow = await client.query<{ current_epoch: string }>(
-      `SELECT current_epoch::text FROM vp.project_epochs WHERE project_id = $1`,
+    const epochRow = await client.query<{
+      current_epoch: string;
+      relation_policy_revision: string | null;
+    }>(
+      `SELECT current_epoch::text,to_jsonb(epoch)->>'relation_policy_revision' AS relation_policy_revision
+       FROM vp.project_epochs AS epoch WHERE project_id = $1`,
       [projectId],
     );
     const relationFrontier = await readCandidateFrontierStatus(
@@ -375,6 +401,31 @@ export async function verifyVPProjectionReplay(
       }
     }
     const latestRelationByPair = new Map<string, RelationRow>();
+    const relationEpochs = new Map<string, bigint>();
+    const decisionEpochs = new Map<string, bigint>();
+    for (const event of events.filter(
+      (event) => event.event_kind === 'SEMANTIC_RELATION_RECORDED',
+    )) {
+      for (const id of event.relation_ids) relationEpochs.set(id, BigInt(event.epoch));
+      if (event.decision_id) decisionEpochs.set(event.decision_id, BigInt(event.epoch));
+    }
+    const negativeEvents = events.filter(
+      (event) => event.event_kind === 'SEMANTIC_NO_RELATION_RECORDED',
+    );
+    const negativeById = new Map(negatives.map((row) => [row.decision_id, row]));
+    const negativeEpochs = new Map<string, bigint>();
+    for (const event of negativeEvents) {
+      const receipt = event.decision_id ? negativeById.get(event.decision_id) : undefined;
+      if (!receipt) continue;
+      const pair = orderedPair(receipt.left_assertion_id, receipt.right_assertion_id);
+      const epoch = BigInt(event.epoch);
+      if (epoch > (negativeEpochs.get(pair) ?? -1n)) negativeEpochs.set(pair, epoch);
+    }
+    const exact = (relation: RelationRow): boolean =>
+      relation.method === 'DETERMINISTIC' && relation.task_kind === 'EXACT_TEXT_EQUIVALENCE';
+    const positiveEpoch = (relation: RelationRow): bigint | undefined =>
+      decisionEpochs.get(relation.decision_id) ?? relationEpochs.get(relation.relation_id);
+    const activeBinding = epochRow.rows[0]?.relation_policy_revision ?? null;
     for (const relation of relations) {
       if (
         !expectedAssertions.has(relation.left_assertion_id) ||
@@ -382,19 +433,8 @@ export async function verifyVPProjectionReplay(
       )
         continue;
       const pair = orderedPair(relation.left_assertion_id, relation.right_assertion_id);
-      const previous = latestRelationByPair.get(pair);
       if (
-        !previous ||
-        relation.decision_created_at.getTime() > previous.decision_created_at.getTime() ||
-        (relation.decision_created_at.getTime() === previous.decision_created_at.getTime() &&
-          relation.relation_id > previous.relation_id)
-      )
-        latestRelationByPair.set(pair, relation);
-    }
-    const expectedRelations = new Set<string>();
-    for (const relation of latestRelationByPair.values()) {
-      const pair = orderedPair(relation.left_assertion_id, relation.right_assertion_id);
-      if (
+        !(activeBinding && exact(relation)) &&
         unresolved.some(
           (job) =>
             orderedPair(job.left_assertion_id, job.right_assertion_id) === pair &&
@@ -402,6 +442,36 @@ export async function verifyVPProjectionReplay(
         )
       )
         continue;
+      const negativeEpoch = negativeEpochs.get(pair),
+        epoch = positiveEpoch(relation);
+      if (
+        !exact(relation) &&
+        negativeEpoch !== undefined &&
+        (epoch === undefined || negativeEpoch >= epoch)
+      )
+        continue;
+      const previous = latestRelationByPair.get(pair);
+      const comparison =
+        previous && negativeEpoch !== undefined
+          ? Number(exact(relation)) - Number(exact(previous)) ||
+            ((epoch ?? -1n) > (positiveEpoch(previous) ?? -1n)
+              ? 1
+              : (epoch ?? -1n) < (positiveEpoch(previous) ?? -1n)
+                ? -1
+                : 0)
+          : 0;
+      if (
+        !previous ||
+        comparison > 0 ||
+        (comparison === 0 &&
+          (relation.decision_created_at.getTime() > previous.decision_created_at.getTime() ||
+            (relation.decision_created_at.getTime() === previous.decision_created_at.getTime() &&
+              relation.relation_id > previous.relation_id)))
+      )
+        latestRelationByPair.set(pair, relation);
+    }
+    const expectedRelations = new Set<string>();
+    for (const relation of latestRelationByPair.values()) {
       expectedRelations.add(relation.relation_id);
     }
     const directEventIds = events
@@ -437,8 +507,28 @@ export async function verifyVPProjectionReplay(
           !batchCandidates.some((candidate) => candidate.status === 'READY')
         );
       });
+    const negativeEventsMatch =
+      negativeEvents.length === negatives.length &&
+      negatives.every(
+        (receipt) =>
+          negativeEvents.filter(
+            (event) =>
+              event.decision_id === receipt.decision_id &&
+              event.assertion_id === receipt.left_assertion_id &&
+              event.relation_ids.length === 0,
+          ).length === 1,
+      );
+    const bindingEvents = events.filter((event) => event.event_kind === 'RELATION_POLICY_BOUND');
+    const policyBindingMatches =
+      (bindingEvents.at(-1)?.policy_revision ?? null) === activeBinding &&
+      new Set(bindingEvents.map((event) => event.policy_revision)).size === bindingEvents.length;
     const historyValid =
-      epochsContiguous && assertionEventsMatch && emptyBatchEventsMatch && relationEventsMatch;
+      epochsContiguous &&
+      assertionEventsMatch &&
+      emptyBatchEventsMatch &&
+      relationEventsMatch &&
+      negativeEventsMatch &&
+      policyBindingMatches;
     return {
       matches:
         historyValid &&
@@ -482,6 +572,8 @@ export async function verifyVPProjectionReplay(
         assertionEventsMatch,
         emptyBatchEventsMatch,
         relationEventsMatch,
+        negativeEventsMatch,
+        policyBindingMatches,
       },
     };
   } catch (error) {

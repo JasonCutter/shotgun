@@ -159,12 +159,12 @@ it('upgrades main 128 additively, preserves a historical receipt, and resets an 
       ).rows,
     ).toEqual([{ global_claim_id: null, semantic_attempt_id: null }]);
     // Extend, rather than replace, the historical P0/URL/Frontier gates above.
-    // All image migrations remain additive to this unprovisioned workload copy.
+    // Image and isolated negative migrations remain additive to this workload copy.
     await migrateUpTo(undefined, db.databaseUrl);
     await migrateUpTo(undefined, db.databaseUrl);
     expect(
       (await pool.query('SELECT count(*)::int AS n FROM runtime.schema_migrations')).rows[0].n,
-    ).toBe(before + 11);
+    ).toBe(before + 12);
     expect(
       (
         await pool.query(
@@ -180,6 +180,7 @@ it('upgrades main 128 additively, preserves a historical receipt, and resets an 
       { name: '137_image_observation_t3_ownership.sql' },
       { name: '138_image_ask_t3_erasure.sql' },
       { name: '139_isolated_image_live_transport_identity.sql' },
+      { name: '140_vp_isolated_negative_knowledge.sql' },
     ]);
     expect(
       (

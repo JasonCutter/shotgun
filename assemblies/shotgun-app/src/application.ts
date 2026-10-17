@@ -1,4 +1,5 @@
 import { CredentialBackedAIProviderAdapter } from '../../../adapters/ai-provider-router/src/index.js';
+import { PostgresGlobalRelationBudget } from '../../../adapters/vp-global-provider-budget-postgres/src/index.js';
 import {
   globalRelationBudgetFromEnvironment,
   relationCredentialFingerprint,
@@ -68,6 +69,11 @@ import type { IsolatedImageLiveAcceptance } from '../../../modules/image-observa
 import { deriveAuthorizedSensitivities } from '../../../packages/contracts/src/index.js';
 import type { DeepSeekConnectivityAdapterOptions } from '../../../adapters/ai-provider-deepseek/src/index.js';
 import { PostgresVPRelationJobs } from '../../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
+import { PostgresIsolatedNegativeKnowledgeJobs } from '../../../adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.js';
+import { DurableIsolatedExplicitNegativeRouter } from '../../../adapters/vp-decision-general-ai/src/explicit-negative-durable-isolated.js';
+import { isProductExplicitNegativeRevision } from '../../../modules/vp-decision/src/explicit-negative-isolated.js';
+import { IsolatedFakeExplicitNegativeProvider } from './isolated-negative-fake-provider.js';
+import type { AIExecutionIdentity } from '../../../packages/contracts/src/ai-candidate-validation.js';
 import { startVPCandidatePolicyRefreshWorker } from './vp-candidate-policy-refresh.js';
 import { GeneralAIVPDecisionAdapter } from '../../../adapters/vp-decision-general-ai/src/index.js';
 import { PostgresStagingAssetLeaseRepository } from '../../../adapters/frontend-sources-staging-postgres/src/index.js';
@@ -285,6 +291,16 @@ import { AsyncCleanupStack } from './cleanup-stack.js';
 import { createMaintenanceSessionGuard } from './runtime-maintenance-session.js';
 import { assertNoUnresolvedProjectKnowledgeReset } from './runtime-knowledge-reset-readiness.js';
 export type StartShotgunApplicationOptions = {
+  /** Explicit product Fake capability. The provider has no network transport. */
+  readonly isolatedRelationPolicy?: {
+    readonly mode: 'ISOLATED_FAKE';
+    readonly revision: string;
+    readonly expectedPreviousRevision: string | null;
+    readonly projectId: string;
+    readonly fakeProvider: IsolatedFakeExplicitNegativeProvider;
+    readonly executionIdentity: AIExecutionIdentity;
+    readonly accountFingerprint: string;
+  };
   /** Explicit isolated-test capability. No environment flag or production
    * fallback can activate image execution. HTTP must be an injected Fake. */
   readonly imageObservationFakeHttp?: NonNullable<DeepSeekConnectivityAdapterOptions['fetch']>;
@@ -445,6 +461,51 @@ export const startShotgunApplication = async (
   const databaseUrl = configuration.databaseUrl as string;
   const stagingSecret = configuration.stagingSecret as string;
   const recoveryHarness = environmentProfile === 'recovery';
+  const isolatedRelationPolicy = options.isolatedRelationPolicy;
+  if (isolatedRelationPolicy !== undefined) {
+    const provider = isolatedRelationPolicy.fakeProvider;
+    const identity = isolatedRelationPolicy.executionIdentity;
+    const authorityUrl = environment.VP_GLOBAL_RELATION_BUDGET_DATABASE_URL?.trim();
+    const workload = new URL(databaseUrl);
+    const authority = authorityUrl ? new URL(authorityUrl) : undefined;
+    const safeTarget = (url: URL): boolean =>
+      ['postgres:', 'postgresql:'].includes(url.protocol) &&
+      /^\/shotgun_test_[a-z0-9_]+$/u.test(url.pathname) &&
+      ![...url.searchParams.keys()].some((key) =>
+        ['host', 'port', 'database', 'dbname', 'db', 'service'].includes(key.toLowerCase()),
+      );
+    const targetHost = (url: URL): string =>
+      ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname.toLowerCase())
+        ? 'loopback'
+        : url.hostname.toLowerCase();
+    if (
+      environmentProfile !== 'runtime-test' ||
+      isolatedRelationPolicy.mode !== 'ISOLATED_FAKE' ||
+      !isProductExplicitNegativeRevision(isolatedRelationPolicy.revision) ||
+      !isolatedRelationPolicy.projectId?.trim() ||
+      provider?.constructor !== IsolatedFakeExplicitNegativeProvider ||
+      provider.identity.provider !== 'isolated-fake' ||
+      identity?.providerId !== provider.identity.provider ||
+      identity.modelId !== provider.identity.model ||
+      identity.credentialId !== provider.accountId ||
+      identity.policyContextRevision !== 'isolated-fake-product-v1' ||
+      identity.providerPolicyFingerprint !== `sha256:${provider.accountFingerprint}` ||
+      !Number.isSafeInteger(identity.aiConfigurationRevision) ||
+      identity.aiConfigurationRevision < 1 ||
+      identity.credentialRevision !== 1 ||
+      isolatedRelationPolicy.accountFingerprint !== provider.accountFingerprint ||
+      !safeTarget(workload) ||
+      !authority ||
+      !safeTarget(authority) ||
+      (targetHost(workload) === targetHost(authority) &&
+        (workload.port || '5432') === (authority.port || '5432') &&
+        workload.pathname === authority.pathname)
+    ) {
+      throw new Error(
+        'Product explicit-negative requires isolated runtime-test Fake identity and separate child authority.',
+      );
+    }
+  }
   const imageFakeHttp = options.imageObservationFakeHttp;
   const imageLiveHttp = options.imageObservationIsolatedLive?.http;
   const imageLiveBaseUrl = options.imageObservationIsolatedLive?.baseUrl;
@@ -1647,97 +1708,185 @@ export const startShotgunApplication = async (
         'VP direct assertion ledger worker',
         await vpAssertionLedgerWorker.startWorker(),
       );
-      // DeepSeek is the sole semantic decision provider until Jev can be
-      // evaluated. The existing project AI resolver enforces credentials,
-      // standing policy, deployment egress and the DeepSeek-only provider pin.
-      const vpRelationJobs = new PostgresVPRelationJobs(
-        pool,
-        Number(process.env.VP_MAX_DAILY_RELATION_PROVIDER_ATTEMPTS ?? '100'),
-        Number(process.env.VP_MAX_RELATION_JOB_ATTEMPTS ?? '3'),
-        true,
-        true,
-      );
-      await vpRelationJobs.recoverExpiredExecutions();
-      cleanupStack.add(
-        'VP candidate discovery',
-        startVPFrontierDiscovery(vpRelationJobs, 'vp-deepseek-relation-v6-evidence-context'),
-      );
-      const relationFingerprint =
-        process.env.VP_GLOBAL_RELATION_BUDGET_ACCOUNT_FINGERPRINT?.trim() ?? '';
-      let relationBudget: ReturnType<typeof globalRelationBudgetFromEnvironment> | undefined;
-      try {
-        relationBudget = globalRelationBudgetFromEnvironment(databaseUrl, relationFingerprint);
-        await relationBudget.budget.status();
-      } catch (error) {
-        await relationBudget?.close();
-        relationBudget = undefined;
-        console.warn(
-          '[vp-relation-jobs] RELATION_BUDGET_PAUSED: global authority unavailable',
-          error,
+      if (isolatedRelationPolicy) {
+        const authorityPool = createPostgresPool(
+          environment.VP_GLOBAL_RELATION_BUDGET_DATABASE_URL!,
         );
-      }
-      if (relationBudget) {
-        cleanupStack.add('VP global relation budget pool', relationBudget.close);
-        const globalBudget = relationBudget.budget;
+        cleanupStack.add('VP isolated Fake global authority pool', () => authorityPool.end());
+        const globalBudget = new PostgresGlobalRelationBudget(authorityPool, {
+          storeId: environment.VP_GLOBAL_RELATION_BUDGET_STORE_ID ?? '',
+          authorityId: environment.VP_GLOBAL_RELATION_BUDGET_AUTHORITY_ID ?? '',
+          provider: 'isolated-fake',
+          accountFingerprint: isolatedRelationPolicy.accountFingerprint,
+          dailyLimit: 100,
+        });
+        await globalBudget.status();
+        const revision = isolatedRelationPolicy.revision;
+        const projectId = isolatedRelationPolicy.projectId;
+        const fakeProvider = isolatedRelationPolicy.fakeProvider;
+        const executionIdentity = Object.freeze({ ...isolatedRelationPolicy.executionIdentity });
+        const productJobs = new PostgresIsolatedNegativeKnowledgeJobs(
+          pool,
+          'ISOLATED_FAKE',
+          revision,
+          projectId,
+        );
+        await productJobs.bindPolicy({
+          expectedPreviousRevision: isolatedRelationPolicy.expectedPreviousRevision,
+        });
+        await productJobs.recoverExpiredExecutions();
+        cleanupStack.add(
+          'VP product Fake frontier discovery',
+          startVPFrontierDiscovery(productJobs, revision, 1_000),
+        );
+        const fakeResolver: AIProviderExecutionResolverPort = {
+          resolve: async (request) => {
+            if (request.projectId !== projectId || request.existingIdentity !== undefined)
+              throw new Error('Product Fake execution identity is outside its bound project.');
+            const standing = await standingPolicy.getCurrent(projectId);
+            if (!standing?.enabled)
+              throw new Error('Product Fake relation egress requires standing processing policy.');
+            return { adapter: fakeProvider, executionIdentity };
+          },
+        };
         const relationResolver = executionBoundRelationResolver(
-          stage4AIExecutionResolver,
-          vpRelationJobs,
+          fakeResolver,
+          productJobs,
           globalBudget,
           {
-            requiredProvider: 'deepseek',
-            verifyCredential: async (identity, projectId, adapter) => {
+            requiredProvider: 'isolated-fake',
+            verifyCredential: async (identity, resolvedProjectId, adapter) => {
               if (
-                !(adapter instanceof CredentialBackedAIProviderAdapter) ||
-                identity.providerId !== 'deepseek'
+                resolvedProjectId !== projectId ||
+                adapter !== fakeProvider ||
+                identity.providerId !== 'isolated-fake' ||
+                identity.modelId !== fakeProvider.identity.model ||
+                identity.credentialId !== fakeProvider.accountId ||
+                identity.providerPolicyFingerprint !== `sha256:${fakeProvider.accountFingerprint}`
               )
-                throw new Error('RELATION_BUDGET_PAUSED: provider context mismatch');
-              return adapter.captureSingleUse((secret, metadata) => {
-                if (
-                  metadata.projectId !== projectId ||
-                  metadata.providerId !== identity.providerId ||
-                  metadata.credentialId !== identity.credentialId ||
-                  metadata.credentialRevision !== identity.credentialRevision ||
-                  relationCredentialFingerprint(secret) !== relationFingerprint
-                ) {
-                  throw new Error('RELATION_BUDGET_PAUSED: credential account mismatch');
-                }
-              });
+                throw new Error('RELATION_BUDGET_PAUSED: Fake account identity mismatch');
             },
           },
         );
-        const vpRelationWorker = new VPRelationJobWorker(
-          vpRelationJobs,
-          new VPRelationDecisionRouter(
-            undefined,
-            new GeneralAIVPDecisionAdapter(
-              relationResolver,
-              executionBoundRelationLedger(vpRelationJobs),
-            ),
-            {
-              revision: 'vp-deepseek-relation-v6-evidence-context',
-              minimumChoiceProbability: 0.9,
-              maximumDeepAnalysisScore: 0,
-              maximumInputTokens: 4_000,
-              maximumOutputTokens: 256,
-            },
+        const worker = new VPRelationJobWorker(
+          productJobs,
+          new DurableIsolatedExplicitNegativeRouter(
+            relationResolver,
+            executionBoundRelationLedger(productJobs),
+            { mode: 'PRODUCT_FAKE', revision },
           ),
           async (job) =>
+            job.projectId === projectId &&
             job.left.sensitivity !== 'restricted' &&
             job.right.sensitivity !== 'restricted' &&
             job.left.accessScope.length > 0 &&
-            job.left.accessScope.every((entry) => job.right.accessScope.includes(entry)),
-          'vp-deepseek-relation-v6-evidence-context',
-          60_000,
+            job.left.accessScope.every((entry) => job.right.accessScope.includes(entry)) &&
+            Boolean((await standingPolicy.getCurrent(projectId))?.enabled),
+          revision,
+          1_000,
           1,
           'FRONTIER',
         );
-        const budgetedWorker = new ExecutionBoundVPRelationDispatcher(
-          vpRelationWorker,
+        const dispatcher = new ExecutionBoundVPRelationDispatcher(
+          worker,
           globalBudget,
-          'shotgun-app',
-          vpRelationJobs,
+          'shotgun-app-isolated-fake',
+          productJobs,
         );
-        cleanupStack.add('VP DeepSeek relation worker', await budgetedWorker.startWorker(60_000));
+        cleanupStack.add('VP product Fake relation worker', await dispatcher.startWorker(1_000));
+      } else {
+        // DeepSeek is the sole semantic decision provider until Jev can be
+        // evaluated. The existing project AI resolver enforces credentials,
+        // standing policy, deployment egress and the DeepSeek-only provider pin.
+        const vpRelationJobs = new PostgresVPRelationJobs(
+          pool,
+          Number(process.env.VP_MAX_DAILY_RELATION_PROVIDER_ATTEMPTS ?? '100'),
+          Number(process.env.VP_MAX_RELATION_JOB_ATTEMPTS ?? '3'),
+          true,
+          true,
+        );
+        await vpRelationJobs.recoverExpiredExecutions();
+        cleanupStack.add(
+          'VP candidate discovery',
+          startVPFrontierDiscovery(vpRelationJobs, 'vp-deepseek-relation-v6-evidence-context'),
+        );
+        const relationFingerprint =
+          process.env.VP_GLOBAL_RELATION_BUDGET_ACCOUNT_FINGERPRINT?.trim() ?? '';
+        let relationBudget: ReturnType<typeof globalRelationBudgetFromEnvironment> | undefined;
+        try {
+          relationBudget = globalRelationBudgetFromEnvironment(databaseUrl, relationFingerprint);
+          await relationBudget.budget.status();
+        } catch (error) {
+          await relationBudget?.close();
+          relationBudget = undefined;
+          console.warn(
+            '[vp-relation-jobs] RELATION_BUDGET_PAUSED: global authority unavailable',
+            error,
+          );
+        }
+        if (relationBudget) {
+          cleanupStack.add('VP global relation budget pool', relationBudget.close);
+          const globalBudget = relationBudget.budget;
+          const relationResolver = executionBoundRelationResolver(
+            stage4AIExecutionResolver,
+            vpRelationJobs,
+            globalBudget,
+            {
+              requiredProvider: 'deepseek',
+              verifyCredential: async (identity, projectId, adapter) => {
+                if (
+                  !(adapter instanceof CredentialBackedAIProviderAdapter) ||
+                  identity.providerId !== 'deepseek'
+                )
+                  throw new Error('RELATION_BUDGET_PAUSED: provider context mismatch');
+                return adapter.captureSingleUse((secret, metadata) => {
+                  if (
+                    metadata.projectId !== projectId ||
+                    metadata.providerId !== identity.providerId ||
+                    metadata.credentialId !== identity.credentialId ||
+                    metadata.credentialRevision !== identity.credentialRevision ||
+                    relationCredentialFingerprint(secret) !== relationFingerprint
+                  ) {
+                    throw new Error('RELATION_BUDGET_PAUSED: credential account mismatch');
+                  }
+                });
+              },
+            },
+          );
+          const vpRelationWorker = new VPRelationJobWorker(
+            vpRelationJobs,
+            new VPRelationDecisionRouter(
+              undefined,
+              new GeneralAIVPDecisionAdapter(
+                relationResolver,
+                executionBoundRelationLedger(vpRelationJobs),
+              ),
+              {
+                revision: 'vp-deepseek-relation-v6-evidence-context',
+                minimumChoiceProbability: 0.9,
+                maximumDeepAnalysisScore: 0,
+                maximumInputTokens: 4_000,
+                maximumOutputTokens: 256,
+              },
+            ),
+            async (job) =>
+              job.left.sensitivity !== 'restricted' &&
+              job.right.sensitivity !== 'restricted' &&
+              job.left.accessScope.length > 0 &&
+              job.left.accessScope.every((entry) => job.right.accessScope.includes(entry)),
+            'vp-deepseek-relation-v6-evidence-context',
+            60_000,
+            1,
+            'FRONTIER',
+          );
+          const budgetedWorker = new ExecutionBoundVPRelationDispatcher(
+            vpRelationWorker,
+            globalBudget,
+            'shotgun-app',
+            vpRelationJobs,
+          );
+          cleanupStack.add('VP DeepSeek relation worker', await budgetedWorker.startWorker(60_000));
+        }
       }
     }
     const { server } = application;

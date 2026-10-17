@@ -46,7 +46,7 @@ export type VPRelationJobStorePort = {
   readDecisionOutcome(input: {
     readonly jobId: string;
     readonly leaseToken: string;
-  }): Promise<'COMPLETED' | 'LEASE_ACTIVE' | 'NOT_ACTIVE'>;
+  }): Promise<'COMPLETED' | 'SUPERSEDED' | 'LEASE_ACTIVE' | 'NOT_ACTIVE'>;
   completeUnresolved(input: {
     readonly jobId: string;
     readonly leaseToken: string;
@@ -132,6 +132,7 @@ export class VPRelationJobWorker {
     | 'RETRYING'
     | 'FAILED'
     | 'OUTCOME_UNKNOWN'
+    | 'SUPERSEDED'
     | VPRecordedNoEdgeOutcome
   > {
     if (this.candidateMode === 'FRONTIER') {
@@ -191,7 +192,10 @@ export class VPRelationJobWorker {
           outcome: result.outcome,
         };
         try {
-          return (await finish.call(this.jobs, completion)) ? result.outcome : 'OUTCOME_UNKNOWN';
+          if (await finish.call(this.jobs, completion)) return result.outcome;
+          return (await this.jobs.readDecisionOutcome(completion)) === 'SUPERSEDED'
+            ? 'SUPERSEDED'
+            : 'OUTCOME_UNKNOWN';
         } catch (error) {
           if (
             typeof error !== 'object' ||
@@ -201,7 +205,10 @@ export class VPRelationJobWorker {
           )
             throw error;
           // Idempotent authoritative readback/finalization only. Never ask the provider again.
-          return (await finish.call(this.jobs, completion)) ? result.outcome : 'OUTCOME_UNKNOWN';
+          if (await finish.call(this.jobs, completion)) return result.outcome;
+          return (await this.jobs.readDecisionOutcome(completion)) === 'SUPERSEDED'
+            ? 'SUPERSEDED'
+            : 'OUTCOME_UNKNOWN';
         }
       }
       // Directional relation types must identify which assertion supports or
@@ -228,7 +235,9 @@ export class VPRelationJobWorker {
           inputTokens: result.decision.inputTokens,
           outputTokens: result.decision.outputTokens,
         } satisfies VPRelationJobDecision;
-        if (!(await this.completeDecisionWithReadback(decision))) {
+        const completed = await this.completeDecisionWithReadback(decision);
+        if (completed === 'SUPERSEDED') return 'SUPERSEDED';
+        if (!completed) {
           console.error(
             '[vp-relation-jobs] decision completion remains unresolved after authoritative readback',
             { jobId: job.jobId },
@@ -274,8 +283,12 @@ export class VPRelationJobWorker {
     }
   }
 
-  private async completeDecisionWithReadback(input: VPRelationJobDecision): Promise<boolean> {
-    const readback = async (): Promise<'COMPLETED' | 'LEASE_ACTIVE' | 'NOT_ACTIVE' | undefined> => {
+  private async completeDecisionWithReadback(
+    input: VPRelationJobDecision,
+  ): Promise<boolean | 'SUPERSEDED'> {
+    const readback = async (): Promise<
+      'COMPLETED' | 'SUPERSEDED' | 'LEASE_ACTIVE' | 'NOT_ACTIVE' | undefined
+    > => {
       try {
         return await this.jobs.readDecisionOutcome({
           jobId: input.jobId,
@@ -301,6 +314,7 @@ export class VPRelationJobWorker {
 
     let outcome = await readback();
     if (outcome === 'COMPLETED') return true;
+    if (outcome === 'SUPERSEDED') return 'SUPERSEDED';
     if (outcome !== 'LEASE_ACTIVE') return false;
 
     // The original transaction did not settle the job. Reuse its already
@@ -311,7 +325,7 @@ export class VPRelationJobWorker {
       // The second commit can also lose its acknowledgement; resolve below.
     }
     outcome = await readback();
-    return outcome === 'COMPLETED';
+    return outcome === 'SUPERSEDED' ? 'SUPERSEDED' : outcome === 'COMPLETED';
   }
 
   async startWorker(): Promise<() => Promise<void>> {

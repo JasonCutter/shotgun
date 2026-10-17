@@ -25,6 +25,29 @@ const manifest = readJson<{
 const loadV8 = (): Corpus => readJson<Corpus>(path.join(ARTIFACT_DIR, 'golden.v8.derived.json'));
 
 describe('T3-1 current authority and v8 lineage', () => {
+  it('registers the isolated negative binding and atomic publication owners with explicit database evidence', () => {
+    const audit = buildAuditShape(ROOT);
+    for (const method of ['bindPolicy', 'finish']) {
+      const owner = audit.boundaries.find(
+        (boundary) =>
+          boundary.file === 'adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts' &&
+          boundary.symbol === 'PostgresIsolatedNegativeKnowledgeJobs' &&
+          boundary.method === method,
+      );
+      expect(owner?.ownership.kind).toBe('SAFE_HELPER');
+      // Static concrete calls do not imply that the operating profile is enabled.
+      expect(owner?.productionReachability.status).toBe('PROVEN');
+      expect(loadV8().regressionEvidence).toContainEqual(
+        expect.objectContaining({
+          file: 'tests/database/vp-negative-knowledge-product.database.test.ts',
+          coverageKind: method === 'bindPolicy' ? 'DIRECT_BOUNDARY' : 'OWNER_ATOMICITY',
+          entrySymbol: method === 'bindPolicy' ? 'bindPolicy' : 'completeRecordedNoEdge',
+          covers: [owner!.boundaryId],
+        }),
+      );
+    }
+  }, 120_000);
+
   it('matches every AST candidate and reachability grade to the frozen baseline manifest', () => {
     const audit = buildAuditShape(ROOT);
     const byId = new Map(audit.boundaries.map((boundary) => [boundary.boundaryId, boundary]));

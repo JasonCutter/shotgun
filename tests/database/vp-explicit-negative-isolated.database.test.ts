@@ -530,3 +530,81 @@ it('allows only one call/claim/attempt under concurrent isolated workers', async
   expect(s.claims).toHaveLength(1);
   expect(s.rows[0]!.attempt_count).toBe(1);
 });
+
+it('documents the execution-only boundary: a recorded negative does not withdraw an older Ask edge', async () => {
+  const f = currentFixture;
+  const pair = (
+    await f.pool.query<{
+      left_assertion_id: string;
+      right_assertion_id: string;
+    }>(
+      'SELECT left_assertion_id::text,right_assertion_id::text FROM vp.relation_jobs WHERE job_id=$1',
+      [f.jobId],
+    )
+  ).rows[0]!;
+  const decisionId = randomUUID();
+  const relationId = randomUUID();
+  // Synthetic prior positive history, not an adjudicated semantic reference.
+  await f.pool.query(
+    `INSERT INTO vp.decision_receipts(decision_id,project_id,method,task_kind,policy_revision,input_digest,outcome,left_assertion_id,right_assertion_id,confidence,provider_model,input_tokens,output_tokens,created_at)
+     VALUES($1,$2,'GENERAL_AI','SEMANTIC_RELATION','synthetic-prior-positive-v1',$3,'SUPPORTS',$4,$5,1,'synthetic-no-network',100,40,clock_timestamp()-interval '1 hour')`,
+    [
+      decisionId,
+      f.projectId,
+      `sha256:${'a'.repeat(64)}`,
+      pair.left_assertion_id,
+      pair.right_assertion_id,
+    ],
+  );
+  await f.pool.query(
+    `INSERT INTO vp.relations(relation_id,project_id,left_assertion_id,right_assertion_id,relation_kind,relation_direction,decision_id)
+     VALUES($1,$2,$3,$4,'SUPPORTS','LEFT_TO_RIGHT',$5)`,
+    [relationId, f.projectId, pair.left_assertion_id, pair.right_assertion_id, decisionId],
+  );
+  const { PostgresVPAskEvidenceSearch } =
+    await import('../../adapters/vp-knowledge-postgres/src/ask-evidence-search.js');
+  const search = new PostgresVPAskEvidenceSearch(f.pool);
+  const query = {
+    projectId: f.projectId,
+    question: 'duplex',
+    accessScope: ['owner'],
+    authorizedSensitivities: ['public'] as const,
+    limit: 12,
+  };
+  const before = await search.search(query);
+  expect(before.evidenceIds).toHaveLength(2);
+  const savedPositive = (
+    await f.pool.query('SELECT * FROM vp.relations WHERE relation_id=$1', [relationId])
+  ).rows;
+  expect(await f.dispatcher().dispatchOnce()).toBe('NO_RELATION');
+  const after = await f.state('documented-product-projection-gap');
+  expect(after.rows[0]).toMatchObject({
+    status: 'COMPLETED',
+    last_failure_code: 'ISOLATED_NO_RELATION',
+  });
+  expect(after.claimedCount).toBe(1);
+  expect(after.receipts).toBe(1);
+  expect(after.edges).toBe(1);
+  expect(f.provider).toHaveBeenCalledTimes(1);
+  expect(
+    (await f.pool.query('SELECT * FROM vp.relations WHERE relation_id=$1', [relationId])).rows,
+  ).toEqual(savedPositive);
+  expect(
+    (
+      await f.pool.query('SELECT relation_id::text FROM vp.current_relations WHERE project_id=$1', [
+        f.projectId,
+      ])
+    ).rows,
+  ).toEqual([{ relation_id: relationId }]);
+  const afterAsk = await search.search(query);
+  expect(afterAsk.evidenceIds).toEqual(before.evidenceIds);
+  expect(afterAsk.knowledgeEpoch).toBe(before.knowledgeEpoch);
+  traces.push({
+    scope: 'DOCUMENTED_UNIMPLEMENTED_PRODUCT_BOUNDARY',
+    decisionId,
+    relationId,
+    before,
+    afterAsk,
+  });
+  // These assertions document an UNIMPLEMENTED product boundary, not a product acceptance PASS.
+});

@@ -36,10 +36,10 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
   it('derives the complete C2-R1 candidate set and canonical inventory', () => {
     const audit = buildAuditShape(ROOT);
 
-    expect(audit.candidates).toHaveLength(145);
-    expect(new Set(audit.candidates.map((candidate) => candidate.candidateId)).size).toBe(145);
+    expect(audit.candidates).toHaveLength(147);
+    expect(new Set(audit.candidates.map((candidate) => candidate.candidateId)).size).toBe(147);
     expect(audit.rawTransactionSites).toHaveLength(21);
-    expect(audit.boundaries).toHaveLength(131);
+    expect(audit.boundaries).toHaveLength(133);
     expect(audit.participants).toHaveLength(1);
     // Current categories are taken from the independently frozen T3 manifest.
     const boundaries = new Map(audit.boundaries.map((boundary) => [boundary.boundaryId, boundary]));
@@ -63,11 +63,11 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
 
     // The live inventory includes the VP boundaries; legacy scoring uses the
     // current source inventory while the frozen v2 fixture remains unchanged.
-    expect(legacy.candidates).toHaveLength(145);
-    expect(legacy.boundaries).toHaveLength(131);
+    expect(legacy.candidates).toHaveLength(147);
+    expect(legacy.boundaries).toHaveLength(133);
     expect(legacy.rawTransactionSites).toHaveLength(21);
     expect(legacy.counts).toMatchObject({
-      TX_BOUNDARY: 117,
+      TX_BOUNDARY: 119,
       NON_TX: 14,
       TEST_ONLY_OR_DEAD: 14,
       REVIEW_REQUIRED: 0,
@@ -78,7 +78,7 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
     const result = validateCorpus(loadCorpus(), ROOT);
 
     expect(result.issues.map((issue) => issue.code)).not.toContain('HISTORICAL_DELTA');
-    expect(result.candidates).toHaveLength(145);
+    expect(result.candidates).toHaveLength(147);
     // The frozen fixture is a record of the LEGACY authority, so its own
     // classification is read back from it rather than from the live authority.
     expect(loadCorpus().summary.TX_BOUNDARY).toBe(100);

@@ -666,12 +666,12 @@
       "reachabilityStatus": "TEST_ONLY_OR_DEAD"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:172",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:102",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:98",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:176",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
@@ -686,35 +686,45 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:292",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts:234",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:361",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/negative-knowledge-isolated.ts:66",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:307",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:382",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:436",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:457",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:673",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:694",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:758",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:779",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:808",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:829",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     }
   ],
-  "auditNotes": " 2026-10-11 VP-05 P0: five existing VP method coordinates remapped with owning method/classification/reachability unchanged; eleven new source candidates audited (three global raw owners, seven lifecycle statements, one concrete expired-execution recovery owner). Added direct regression evidence for the new PROVEN recovery boundary. Validator rules and frozen v2-v7 inputs unchanged. See docs/implementation/vp05-p0-execution-authority-2026-10-11/ts6-coordinate-audit.md. 2026-10-14 image-isolated implementation: fifteen inherited SAFE_HELPER coordinates remapped by the same file/class/method/ownership with unchanged classification and qualified reachability. One new VP image-ledger append owner is PORT_INFERRED from the typed VPImageObservationLedgerPort caller in the runtime-test-only image assembly; this does not assert production activation. A directly constructed PostgreSQL ledger concurrency/restart test supplies the new regression relation. Frozen v2-v7 inputs, resolver rules and T3 base commit remain unchanged."
+  "auditNotes": " 2026-10-11 VP-05 P0: five existing VP method coordinates remapped with owning method/classification/reachability unchanged; eleven new source candidates audited (three global raw owners, seven lifecycle statements, one concrete expired-execution recovery owner). Added direct regression evidence for the new PROVEN recovery boundary. Validator rules and frozen v2-v7 inputs unchanged. See docs/implementation/vp05-p0-execution-authority-2026-10-11/ts6-coordinate-audit.md. 2026-10-14 image-isolated implementation: fifteen inherited SAFE_HELPER coordinates remapped by the same file/class/method/ownership with unchanged classification and qualified reachability. One new VP image-ledger append owner is PORT_INFERRED from the typed VPImageObservationLedgerPort caller in the runtime-test-only image assembly; this does not assert production activation. A directly constructed PostgreSQL ledger concurrency/restart test supplies the new regression relation. Frozen v2-v7 inputs, resolver rules and T3 base commit remain unchanged. 2026-10-17 approved isolated negative product: remapped existing owners by file/class/method with unchanged grades; two added SAFE_HELPER owners (bindPolicy, finish) have concrete static call sites, tested isolated Fake only. PROVEN is static reachability, not operating activation. Added direct binding and owner-atomicity finalizer evidence. No validator/frozen v2-v7 changes."
 }

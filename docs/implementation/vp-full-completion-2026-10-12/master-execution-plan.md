@@ -1,6 +1,12 @@
 # VP 전체 완료 Master Execution Plan
 
 > **IN_PROGRESS — NOT_IMPLEMENTATION_COMPLETE / NOT_FINAL_ACCEPTANCE_COMPLETE**
+
+> 2026-10-18 현재 종료 대조는 [최종 증거 매트릭스](./final-closure-2026-10-18.md)를
+> 따른다. 위 최초 상태와 아래 날짜별 미실행/HOLD는 이력으로 보존한다. 현재
+> Windows 재부팅·운영 최초 질문·지정 관계 backlog는 종료됐고, 최소 completion
+> 진단 보정의 로컬 검증/Canonical 게시 및 VP-11의 최신 설치본 실모델 단일 여정은
+> 별도로 판정한다. 전체 VP 최종 완료를 아직 선언하지 않는다.
 >
 > 사용자 실행 지시 2026-10-12, Canonical base `aba6ff27f9620ee1a3f408f8df81e8aad21cc584`. 개발 branch `codex/vp-full-completion`. `VP-01`–`VP-11` ID와 `VP-0`–`VP-4` 계약은 유지한다.
 
@@ -361,3 +367,24 @@ T3 FK 순서를 보완했다. [구현·검증 보고](./negative-ledger-product-
 TS6 65와 release·정적/문서 Gate PASS다. 기본 v6 실제 앱3개, 새 negative 앱과
 독립 full replay, UNKNOWN/동시 확정/ACK 유실·migration/T3를 포함한다. 운영 OFF·
 보호 파일79개·타 worktree13개·기존 sealed packet4개153파일을 보존했다.
+
+### 2026-10-17 — Windows 인수 후 부분 관계 처리의 독립 검증
+
+이후 PR393은 Canonical `9717186c6543fe71bf5155ec374ff24b1a234c3a`에 반영됐고
+운영 설치/schema140·기존 바로가기·실제 Windows 재부팅 인수가 별도 승인과
+증거로 완료됐다. 위 절들의 미게시/운영 미전환/재부팅 미실행은 당시 기록이다.
+정상 앱의 AI 자동 활성화와 새 자료/질문 최초 사용까지 완료된 것은 아니다.
+
+후속 사용자 승인 관계 workload는 일일 예산100회에서39 DECIDED/61 UNRESOLVED로
+종료했고941개를 보존했다. standing6disabled 및 일반 앱의 global authority
+설정 미연결 상태로 복원했다. 모든941개 처리를 독립 개발이나 직접 원문 질문의
+선행 Gate로 확장하지 않는다.
+
+[부분 관계 처리 중 제품 인수](./partial-relation-product-acceptance-2026-10-17.md)는
+현재 v6 앱에서 관계 예산 소진·명시적 UNRESOLVED와 직접 자료 Ask의 관계를
+테스트 두 개로 고정하고 기존 negative 앱 회귀까지 PostgreSQL3/3을 통과했다.
+운영 읽기 전용 대조에서는 주장105/현재 관계82의 독립 원장 재계산, pending941,
+현재/권한 근거 검색3개와 공개 민감도 비노출을 확인했다. 추가 AI 호출0이다.
+제품 코드·정책·schema 변경 없이 미입증 경계를 검증했으며, pair 상태 API/UI와
+인증 의미 정확도·전체 VP 완료를 새로 주장하지 않는다. 일반 앱의 운영 AI 연결·
+활성화 및 좁은 최초 사용 인수는 별도 승인·유효 예산이 필요한 잔여 조건이다.

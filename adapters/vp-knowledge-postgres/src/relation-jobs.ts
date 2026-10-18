@@ -869,7 +869,8 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
           await client.query(
             `UPDATE vp.relation_jobs
                 SET status = 'COMPLETED', lease_token = NULL,
-                    lease_expires_at = NULL, updated_at = clock_timestamp()
+                    lease_expires_at = NULL, next_attempt_at = NULL,
+                    last_failure_code = NULL, updated_at = clock_timestamp()
               WHERE job_id = $1`,
             [input.jobId],
           );
@@ -918,7 +919,8 @@ export class PostgresVPRelationJobs<Output = VPRelationDecision>
         await client.query(
           `UPDATE vp.relation_jobs
               SET status = 'COMPLETED', lease_token = NULL,
-                  lease_expires_at = NULL, updated_at = clock_timestamp()
+                  lease_expires_at = NULL, next_attempt_at = NULL,
+                  last_failure_code = NULL, updated_at = clock_timestamp()
             WHERE job_id = $1`,
           [input.jobId],
         );

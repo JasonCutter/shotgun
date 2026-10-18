@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 1,
+  "classification": "LOCAL_ENGINEERING_EVIDENCE_PENDING_CANONICAL_PUBLICATION",
+  "recordedAtUTC": "2026-10-18T06:42:51.508Z",
+  "canonicalBase": "9717186c6543fe71bf5155ec374ff24b1a234c3a",
+  "developmentBase": "e46803fc5b79329ef5c15143e32404c511701cd1",
+  "implementationAndVerificationSource": [
+    {
+      "path": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+      "worktreeBytesSHA256": "462e072516916923eb8229e802b4f6ffa2cbbaed562f6f94f0bc70a7935fd96d"
+    },
+    {
+      "path": "tests/database/vp05-p0-boundary.database.test.ts",
+      "worktreeBytesSHA256": "1bc51d775ac6b6e20e178cc054552f25334765d1a93271e99256be5a8a305425"
+    },
+    {
+      "path": "tests/database/vp-partial-relation-acceptance.database.test.ts",
+      "worktreeBytesSHA256": "373f42cf4dfcbbe23c4f5408670ea8b9598d9e1ac9176c3197077503168599ef"
+    },
+    {
+      "path": "tests/helpers/vp-full-application-fixture.ts",
+      "worktreeBytesSHA256": "9aa2cbc5e30c84cec5f876aafbbc0f5f2cbd681bc93b1dd97ffffd03fe9d5601"
+    }
+  ],
+  "results": {
+    "database": {
+      "passed": 46,
+      "failed": 0,
+      "existingOptInSkipped": 1,
+      "existingSkipFlag": "VP_RELATION_POSTGRES_OUTAGE_TEST",
+      "caseCount": 47,
+      "resultsReusedWithoutDoubleCounting": true
+    },
+    "unitContract": {
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0
+    },
+    "ts6": {
+      "passed": 65,
+      "failed": 0,
+      "skipped": 0,
+      "workers": 4,
+      "unchangedTimeoutsAssertionsAndFrozenArtifacts": true,
+      "concurrentRunColdMs": 62969.9675,
+      "standaloneFinalColdMs": 35717.0077,
+      "currentV8Regenerated": false
+    },
+    "operating": {
+      "writes": 0,
+      "providerCallsByClosure": 0,
+      "appRestartByClosure": 0,
+      "configurationChanges": 0,
+      "snapshotChangedTables": {
+        "product": ["auth.audit_events"],
+        "authority": []
+      },
+      "currentAssertions": 105,
+      "currentRelations": 280,
+      "frontierCandidates": 1132,
+      "frontierGenerationMembershipExecutionComplete": true,
+      "replayMatches": true,
+      "historyValid": true,
+      "pending": 0,
+      "failed": 0,
+      "unknown": 0,
+      "legacyCurrentDiagnosticRetained": true,
+      "legacyReceiptAuthorityOutcome": "COMPLETED",
+      "day": "2026-10-18",
+      "claimed": 941,
+      "ordinaryDailyLimit": 100,
+      "allowance": "CLOSED",
+      "reserved": 0,
+      "sourceEvidenceAskUnchanged": true,
+      "protectedFiles": 79,
+      "stashUnchanged": true,
+      "otherWorktreesUnchanged": 12
+    }
+  },
+  "certification": {
+    "humanValidatedReferenceCount": 0,
+    "certifiedPrecisionRecallCriticalRecallCalibration": "N/A",
+    "fakePassIsNotSemanticCertification": true
+  },
+  "remaining": {
+    "canonicalPublication": "PENDING_SEPARATE_AUTHORIZATION_AND_EXACT_HEAD_CI",
+    "operatingDeployment": "NOT_PERFORMED",
+    "finalInstalledEmptyActualAIJourney": "NOT_RUN_REQUIRES_BOUNDED_AUTHORIZED_EXECUTION"
+  },
+  "artifacts": [
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "READ_ONLY_OPERATING_REPLAY_AND_PRESERVATION",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/vp-final-closure-20261018/operating-readonly-audit-final.json",
+      "bytes": 6101454,
+      "sha256": "36e967de92003cbc0daa1e43fe9322128e218567b3a23768da140fbe811d6d61"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "LOCAL_ENGINEERING_RESULTS",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/vp-final-closure-20261018/verification-summary.json",
+      "bytes": 15046,
+      "sha256": "ddbb78e6821368f487cfe0c523c22ad73f596109549a2a68334f70aec6ad71eb"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "EXPECTED_PRE_FIX_FAILURE",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/vp-final-closure-20261018/metadata-before-fix.json",
+      "bytes": 4461,
+      "sha256": "5021aff6063f0a3381497ed7a478ecb677e79935541d512efdbeb3df03a9b74a"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "BOUNDARY_REGRESSION_PASS",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/vp-final-closure-20261018/metadata-after-fix.json",
+      "bytes": 4381,
+      "sha256": "53db2133d1c31804c1a167e1bb99fe6911f7e32b831edcacced2b616a1c65a41"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "INITIAL_ENVIRONMENT_FAILURES_PRESERVED",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/vp-final-closure-20261018/database-results.json",
+      "bytes": 18430,
+      "sha256": "8c8c4cf635653769d92a2fd0b4ca48b53a676ff5513ae299093bae7ccf0279d0"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "ENVIRONMENT_CORRECTED_UNCHANGED_SUITE",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/vp-final-closure-20261018/relation-priority-final-results.json",
+      "bytes": 4545,
+      "sha256": "72f3816fdbea95ead4bae4a02e1620b652b9f1b85cbae957da7c6154cf8edb9f"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "UNIT_AND_CONTRACT",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/vp-final-closure-20261018/unit-contract-results.json",
+      "bytes": 11625,
+      "sha256": "71e96ea798cc68ea9993e18995570104bda93f0a7766b135b7f825459bd71fb3"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "CONCURRENT_RESOURCE_FAILURE_PRESERVED",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/vp-final-closure-20261018/ts6-results.json",
+      "bytes": 25806,
+      "sha256": "91efba3e10d8fc337544fba3344d72a13c86e89d0c167cdafe9e63bacc4952cc"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "STANDARD_COMMAND_FRESH_FINAL_PASS",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/vp-final-closure-20261018/ts6-final-results.json",
+      "bytes": 24580,
+      "sha256": "e7cefed489b8a30650e8f89330be6ae9df01a8145718ee91c8271e856675b864"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "STATIC_GATES",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/vp-final-closure-20261018/static-gates-final.json",
+      "bytes": 2301,
+      "sha256": "5760a5a619b76b3726a0872c0cfef1acc96487936cc64e066463b9d1a4e0c66d"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "OWNED_TEST_CONTAINER_RESTORED",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/vp-final-closure-20261018/isolated-cleanup.json",
+      "bytes": 238,
+      "sha256": "c46b9a54cd1c3310b07fefebf640f2aaba41eb371483fada47d5748a08d67175"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "SEALED_WINDOWS_REBOOT",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/windows-final-acceptance-20261017/evidence-index.json",
+      "bytes": 10579,
+      "sha256": "a885c1e877697dc23690d981fa86acafead31db4345d0f768f0daa2f058e10fa"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "SEALED_OPERATING_REAL_ASK",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/operating-ai-activation-20261017/final-evidence-index.json",
+      "bytes": 5165,
+      "sha256": "431ba9f34c2ac6f6f725939da9ab54e43579d70ff0d810cab7361a3d3cc8a774"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "SEALED_BOUNDED_EXECUTION_ORIGINAL_STOP_RETAINED",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/bounded-budget-841-20261018/final-execution-evidence-index.json",
+      "bytes": 8783,
+      "sha256": "9098c96ba133e7482d347398ff2a2313df05b86c44e3db783919faa99e583bae"
+    },
+    {
+      "classification": "REFERENCE_IMMUTABLE_BYTES_HASHED",
+      "scope": "SEALED_APPROVED_APP_RESTORATION",
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/app-restore-after-bounded-841-20261018/final-evidence-index.json",
+      "bytes": 2101,
+      "sha256": "6818c1c399c70089e3e33c47c90e9d54ec1ec2a994d8f9c6c85d4f2a9fb71dc8"
+    }
+  ]
+}

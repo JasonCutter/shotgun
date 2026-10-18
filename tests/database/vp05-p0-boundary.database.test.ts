@@ -269,6 +269,175 @@ it.each(['AUTHORITY_UNAVAILABLE', 'EXHAUSTED', 'GLOBAL_BIND_FAILURE'] as const)(
   },
 );
 
+it('clears a budget pause after one successful relation finalization and receipt replay', async () => {
+  const f = currentFixture;
+  const completion = vi.spyOn(f.jobs, 'completeDecision');
+  await f.authorityPool.query(
+    `INSERT INTO vp_global_budget.daily_usage(authority_id,budget_day,claimed_count)
+     VALUES($1,vp_global_budget.current_budget_day(),100)`,
+    [f.authorityId],
+  );
+  expect(await f.dispatcher().dispatchOnce()).toBe('RELATION_BUDGET_PAUSED');
+  const paused = await f.pool.query<{
+    job_id: string;
+    status: string;
+    attempt_count: number;
+    last_failure_code: string | null;
+  }>(
+    `SELECT job_id::text,status,attempt_count,last_failure_code
+       FROM vp.relation_jobs WHERE project_id=$1 AND policy_revision=$2`,
+    [f.projectId, f.revision],
+  );
+  expect(paused.rows).toEqual([
+    expect.objectContaining({
+      status: 'RETRYABLE',
+      attempt_count: 0,
+      last_failure_code: 'RELATION_BUDGET_PAUSED:EXHAUSTED',
+    }),
+  ]);
+
+  await f.authorityPool.query(
+    `UPDATE vp_global_budget.daily_usage SET claimed_count=0
+      WHERE authority_id=$1 AND budget_day=vp_global_budget.current_budget_day()`,
+    [f.authorityId],
+  );
+  await f.pool.query(
+    `UPDATE vp.relation_jobs SET next_attempt_at=clock_timestamp()-interval '1 second'
+      WHERE job_id=$1`,
+    [paused.rows[0]!.job_id],
+  );
+  expect(await f.dispatcher().dispatchOnce()).toBe('DECIDED');
+  expect(await f.dispatcher().dispatchOnce()).toBe('EMPTY');
+  const completed = await f.pool.query<{
+    status: string;
+    attempt_count: number;
+    lease_token: string | null;
+    next_attempt_at: Date | null;
+    last_failure_code: string | null;
+  }>(
+    `SELECT status,attempt_count,lease_token,next_attempt_at,last_failure_code
+       FROM vp.relation_jobs WHERE job_id=$1`,
+    [paused.rows[0]!.job_id],
+  );
+  expect(completed.rows).toEqual([
+    {
+      status: 'COMPLETED',
+      attempt_count: 1,
+      lease_token: null,
+      next_attempt_at: null,
+      last_failure_code: null,
+    },
+  ]);
+  const counts = async () =>
+    ({
+      calls: Number(
+        (
+          await f.pool.query<{ n: string }>(
+            'SELECT count(*)::text n FROM vp.relation_provider_calls WHERE project_id=$1',
+            [f.projectId],
+          )
+        ).rows[0]?.n,
+      ),
+      receipts: Number(
+        (
+          await f.pool.query<{ n: string }>(
+            `SELECT count(*)::text n FROM vp.decision_receipts
+            WHERE project_id=$1 AND task_kind='SEMANTIC_RELATION'`,
+            [f.projectId],
+          )
+        ).rows[0]?.n,
+      ),
+      relations: Number(
+        (
+          await f.pool.query<{ n: string }>(
+            'SELECT count(*)::text n FROM vp.relations WHERE project_id=$1',
+            [f.projectId],
+          )
+        ).rows[0]?.n,
+      ),
+      history: Number(
+        (
+          await f.pool.query<{ n: string }>(
+            `SELECT count(*)::text n FROM vp.history_events
+            WHERE project_id=$1 AND event_kind='SEMANTIC_RELATION_RECORDED'`,
+            [f.projectId],
+          )
+        ).rows[0]?.n,
+      ),
+      claims: Number(
+        (
+          await f.authorityPool.query<{ n: string }>(
+            'SELECT count(*)::text n FROM vp_global_budget.claims WHERE authority_id=$1',
+            [f.authorityId],
+          )
+        ).rows[0]?.n,
+      ),
+    }) as const;
+  expect(await counts()).toEqual({ calls: 1, receipts: 1, relations: 1, history: 1, claims: 1 });
+  expect(f.provider).toHaveBeenCalledTimes(1);
+  const finalized = completion.mock.calls[0]?.[0];
+  expect(finalized).toBeDefined();
+  expect(await f.jobs.completeDecision(finalized!)).toBe(false);
+  expect(await counts()).toEqual({ calls: 1, receipts: 1, relations: 1, history: 1, claims: 1 });
+
+  // Simulate an old lease record left open after its receipt committed. The
+  // conflict readback must settle the current job without adding audit rows.
+  await f.pool.query(
+    `UPDATE vp.relation_jobs
+        SET status='RUNNING',lease_token=$2,lease_expires_at=clock_timestamp()+interval '2 minutes',
+            next_attempt_at=clock_timestamp()+interval '1 minute',
+            last_failure_code='RELATION_BUDGET_PAUSED:EXHAUSTED'
+      WHERE job_id=$1`,
+    [paused.rows[0]!.job_id, finalized!.leaseToken],
+  );
+  expect(await f.jobs.completeDecision(finalized!)).toBe(false);
+  expect(
+    (
+      await f.pool.query(
+        'SELECT status,lease_token,next_attempt_at,last_failure_code FROM vp.relation_jobs WHERE job_id=$1',
+        [paused.rows[0]!.job_id],
+      )
+    ).rows,
+  ).toEqual([
+    { status: 'COMPLETED', lease_token: null, next_attempt_at: null, last_failure_code: null },
+  ]);
+  expect(await counts()).toEqual({ calls: 1, receipts: 1, relations: 1, history: 1, claims: 1 });
+  expect(f.provider).toHaveBeenCalledTimes(1);
+
+  // Readback uses the linked receipt/relation, even for legacy terminal rows
+  // that still carry a stale pause diagnostic.
+  await f.pool.query(
+    `UPDATE vp.relation_jobs SET last_failure_code='RELATION_BUDGET_PAUSED:EXHAUSTED'
+      WHERE job_id=$1`,
+    [paused.rows[0]!.job_id],
+  );
+  expect(
+    await f.jobs.readDecisionOutcome({
+      jobId: paused.rows[0]!.job_id,
+      leaseToken: randomUUID(),
+    }),
+  ).toBe('COMPLETED');
+  await f.pool.query('UPDATE vp.relation_jobs SET last_failure_code=NULL WHERE job_id=$1', [
+    paused.rows[0]!.job_id,
+  ]);
+
+  // A terminal status and clean diagnostic cannot stand in for this job's
+  // own receipt: the only existing receipt belongs to another policy revision.
+  const unreceiptedJobId = randomUUID();
+  await f.pool.query(
+    `INSERT INTO vp.relation_jobs
+       (job_id,project_id,left_assertion_id,right_assertion_id,policy_revision,max_attempts,
+        status,last_failure_code)
+     SELECT $2,project_id,left_assertion_id,right_assertion_id,$3,max_attempts,
+            'COMPLETED',NULL
+       FROM vp.relation_jobs WHERE job_id=$1`,
+    [paused.rows[0]!.job_id, unreceiptedJobId, `${f.revision}-unreceipted`],
+  );
+  expect(
+    await f.jobs.readDecisionOutcome({ jobId: unreceiptedJobId, leaseToken: randomUUID() }),
+  ).toBe('NOT_ACTIVE');
+}, 30_000);
+
 it('records an armed unused claim recoverably when local activation fails', async () => {
   const f = currentFixture;
   const activate = vi

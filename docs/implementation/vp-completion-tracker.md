@@ -6,6 +6,27 @@
 
 ## 갱신 규칙
 
+### 2026-10-18 최종 종료 대조
+
+[최신 종료 매트릭스](./vp-full-completion-2026-10-12/final-closure-2026-10-18.md)를
+현재 상태의 대조 기준으로 사용한다. 아래 날짜별 HOLD/미실행은 당시 이력이며,
+이미 끝난 Windows 설치·실제 재부팅·운영 AI 활성화/최초 질문·관계941건 대기를
+현재 미완료로 다시 보고하지 않는다. 지정된 잔여841건은183 DECIDED/658 UNRESOLVED로
+종결됐고 현재 미처리·실패·UNKNOWN0이다. 읽기 전용 독립 재생에서 현재 주장105/
+관계280, Frontier1132의 generation/membership/execution 완료 및 모든 history
+검사가 통과했다. 전체 PairUniverse의 의미 recall 인증으로 확대하지 않는다.
+
+성공 job에 과거 예산 대기 코드가 남던 두 completion UPDATE는 로컬 최소 보정으로
+현재 재시도/오류 진단만 지우며 영수증·call/attempt·history와 보류 사유를 보존한다.
+실제 영수증을 읽는 기존 `readDecisionOutcome`를 감사 권위로 재사용하고, 원래
+841건 controller STOP·운영 행·봉인 증거를 소급 수정하지 않는다. 운영 배포는 하지 않았다.
+
+인증 Gold0/N/A는 후속 승인된 DoD에 따라 제품 인수의 자동 blocker가 아니다.
+반면 VP-11의 **최종 main 설치본 빈 공간→A/B/수정본→실제 AI 질문 단일 여정**은
+아직 NOT_RUN이다. [최소 종료 절차](./vp-full-completion-2026-10-12/final-installed-live-acceptance-plan-2026-10-18.md)와
+최종 코드/증거의 Canonical 게시가 남는다. 이 로컬 기록은 전체 COMPLETE나
+새 실호출·push/PR/merge·운영 전환 승인이 아니다.
+
 ### 2026-10-12 후속 전체 구현 승인
 
 [사용자 연속 실행 지시](./vp-full-completion-2026-10-12/execution-directive.md)에 따라 A3 및 VP-03~11의 개발·격리 검증을 진행한다. 아래 2026-10-10 STOP은 당시 기록이며 현재 안전한 개발 착수의 차단 조건이 아니다. [Master Plan](./vp-full-completion-2026-10-12/master-execution-plan.md)에 신규 구현·실제 앱 Fake 인수·복원·미검증 항목을 분리한다. 기존 Gate/ID/동결 증거와 별도 merge·운영 전환 승인은 유지한다. 이 추가 기록은 전체 VP 완료 판정이 아니다.

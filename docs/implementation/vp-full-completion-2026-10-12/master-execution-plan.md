@@ -1,6 +1,12 @@
 # VP 전체 완료 Master Execution Plan
 
 > **IN_PROGRESS — NOT_IMPLEMENTATION_COMPLETE / NOT_FINAL_ACCEPTANCE_COMPLETE**
+
+> 2026-10-18 현재 종료 대조는 [최종 증거 매트릭스](./final-closure-2026-10-18.md)를
+> 따른다. 위 최초 상태와 아래 날짜별 미실행/HOLD는 이력으로 보존한다. 현재
+> Windows 재부팅·운영 최초 질문·지정 관계 backlog는 종료됐고, 최소 completion
+> 진단 보정의 로컬 검증/Canonical 게시 및 VP-11의 최신 설치본 실모델 단일 여정은
+> 별도로 판정한다. 전체 VP 최종 완료를 아직 선언하지 않는다.
 >
 > 사용자 실행 지시 2026-10-12, Canonical base `aba6ff27f9620ee1a3f408f8df81e8aad21cc584`. 개발 branch `codex/vp-full-completion`. `VP-01`–`VP-11` ID와 `VP-0`–`VP-4` 계약은 유지한다.
 

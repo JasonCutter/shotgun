@@ -8,7 +8,12 @@
 
 ## VP 활성 제품 경로
 
-개발·평가의 현재 우선순위는 [ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)와 [전략 실행 기준](./development-strategy-reset-2026-10-10/execution-plan.md)을 따른다. 제품 인수→평가 신뢰성→실제 병목→최소 보완 순서다. VP-05는 미완료이며 기술 실험과 VP-06은 보류/STOP이다. ADR-172의 활성 지식 권위와 아래 기존 Stage/Phase 이력은 유지하고, 후보 benchmark를 인증 품질로 취급하지 않는다.
+현재 제품은 **VP_FINAL_ACCEPTANCE_COMPLETE — Shotgun V1.0 / Application 1.0.0**이다.
+최종 증거 PR #395의 main 병합과 사후 CI가 종결 조건을 충족했고, 사용자가 2026-10-20에
+V1.0으로 명명했다. [릴리스 기준과 완료 근거](./releases/v1.0.0.md), [VP 완료 현황표](./vp-completion-tracker.md)를
+현재 상태로 사용한다. 새 버전 명명 변경의 게시/태그/운영 배포는 별도 상태다.
+
+후속 개발은 [ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)와 [전략 실행 기준](./development-strategy-reset-2026-10-10/execution-plan.md)의 제품 인수→평가 신뢰성→실제 병목→최소 보완 순서를 따른다. 과거 VP-05 미완료/VP-06 STOP 표시는 당시 이력과 이후 승인 범위를 구분한다. 현재 완료가 v11·SSC·새 모델·중단 실험의 재개 승인은 아니다. ADR-172의 활성 지식 권위와 아래 기존 Stage/Phase 이력은 유지하고, 후보 benchmark를 인증 품질로 취급하지 않는다.
 
 [ADR-172](../architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md)와 [VP 구현계획](./vp-vampire-implementation-plan.md)이 빈 단일 지식 공간의 **자료 투입 → 자동 지식화 → 질문** 경로를 정의한다. 아래 Phase 1–6 승인형 Canonical 단계와 Stage 표는 기존 경로의 구현·감사 기준이다. VP에서는 사용자 Review·Approval 없이 Evidence를 검증한 VP Knowledge Ledger가 활성 지식 권위를 가진다. 이 제품 경로의 완료는 VP 구현계획의 VP-0–VP-4 Gate와 [Definition of Done](./definition-of-done.md)의 공통 Module·Flow·Product·Architecture·OSS Gate를 모두 통과해야 한다.
 
@@ -20,10 +25,11 @@
 
 - [Knowledge Flow 기준본](../SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html)
 - [참조 아키텍처 전략](../shotgun_reference_architecture_strategy_ko.html)
-- [Phase 1~6 ADD Canonical 허브](https://app.notion.com/p/39f5181d71ad81a6a51ff7f2a3a88ee6)
+- [Phase 1~6 ADD Canonical 허브](../architecture/add/README.md)
 - [Module Architecture ADD](../architecture/module-architecture/README.md)
 
-현재 `main`에는 Phase 1~6 ADD의 GitHub Markdown 사본이 없으므로 Phase 정책의 기준은 위 Notion Canonical 허브다. 향후 사본이 `main`에 병합되면 이 링크를 저장소 내부 경로로 바꾼다.
+ADR-117/120에 따른 Canonical은 GitHub `main`이다. 과거 Notion 허브는 Legacy Reference이며
+현재 ADD는 위 저장소 내부 경로를 따른다. 최초 계획의 이관 전 상태와 현재 권위를 구분한다.
 
 충돌이 발생하면 다음 우선순위를 따른다.
 

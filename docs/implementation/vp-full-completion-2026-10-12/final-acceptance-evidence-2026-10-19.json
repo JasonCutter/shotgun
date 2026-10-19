@@ -1,0 +1,425 @@
+{
+  "schemaVersion": 1,
+  "classification": "EXECUTED_PRODUCT_ACCEPTANCE_EVIDENCE_NOT_SEMANTIC_GOLD",
+  "recordedAtUTC": "2026-10-19T04:48:15.803183+00:00",
+  "publicationAtWriting": "LOCAL_PENDING_SEPARATE_PUSH_PR_MERGE_APPROVAL",
+  "executedCanonicalRelease": "c0e21c301c25dbc600c2af9ef048c750461b0260",
+  "executedTree": "af5d9b200364dfac4c49db9d440d5c706fdbe273",
+  "canonicalPostMergeCI": {
+    "run": 39108234072,
+    "url": "https://github.com/JasonCutter/shotgun/actions/runs/39108234072",
+    "Quality": "SUCCESS",
+    "Frontend": "SUCCESS",
+    "RequiredGates": "SUCCESS"
+  },
+  "actualInstalledShortcut": true,
+  "runtimeGitBlobsVerified": 881,
+  "preliveReleaseFilesUnchanged": 895,
+  "interactionMethod": "Actual Windows .lnk starts the normal canonical owner/bootstrap/application/worker/Ask. Three intakes and three questions use authenticated product frontend APIs; empty/current/historical views were read in the browser. No claim of six browser form submissions.",
+  "result": {
+    "status": "FINAL_INSTALLED_LIVE_PRODUCT_ACCEPTANCE_PASS",
+    "sourcesSubmitted": 3,
+    "questionsSubmitted": 3,
+    "providerHTTPAttempts": 7,
+    "extractionCalls": 3,
+    "askCalls": 3,
+    "relationCalls": 1,
+    "newUnknown": 0,
+    "duplicateWireRequests": 0,
+    "retryAttempts": 0,
+    "individualKnowledgeReviewClicks": 0,
+    "sourceVersionEvidenceQuoteTuplesMatched": 3,
+    "receiptInputDigestIndependentlyRecomputed": true,
+    "globalOneToOneBinding": {
+      "claimId": "e2333fc3-b40d-4819-b7b8-ebf282f367ca",
+      "jobId": "b7a762a3-0970-4f66-bc71-3e126f1ee1b9",
+      "semanticAttemptId": "07b89f0f-31c9-495d-bf57-887aa6819f97",
+      "executionKey": "sha256:98e4deb483086f44f1ccfbc9a2eeb018c60a104b47c6c41d395aa823fecb9d8c",
+      "localCallId": "9bfa53c0-50a4-465f-b83c-605974ac1326",
+      "providerResponseId": "8c2cc458-d013-4632-91ac-67544293b3c4",
+      "decisionId": "fe4b6616-254b-427f-9191-fa2a67039761",
+      "receiptProviderCallFk": null,
+      "receiptCorrelation": "Existing v6 unique project/pair/policy plus independently recomputed SourceVersion/Evidence/claim/context digest; no direct receipt-call FK is asserted."
+    },
+    "observedRelation": {
+      "choice": "CONTRADICTS",
+      "direction": "NONE",
+      "selectedProbability": 0.97,
+      "confidence": 0.99,
+      "policyUnchanged": true,
+      "isPopulationAccuracyCertification": false
+    },
+    "historicalStale": true,
+    "currentStale": false,
+    "oldStatementsCitationsCapabilitiesUnchanged": true,
+    "ordinaryBudget": {
+      "day": "2026-10-19",
+      "limit": 100,
+      "startingClaimed": 0,
+      "endingClaimed": 1,
+      "remaining": 99,
+      "reserved": 0,
+      "old841Allowance": "CLOSED"
+    },
+    "usage": {
+      "inputTokens": 4729,
+      "outputTokens": 382,
+      "totalTokens": 5111
+    },
+    "operatingProductTablesUnchanged": 212,
+    "ownedChildrenExited": true,
+    "ownedWorkloadDbDropped": true,
+    "certificateGold": 0,
+    "certifiedPopulationMetrics": "N/A"
+  },
+  "responses": [
+    {
+      "slot": 1,
+      "kind": "extraction",
+      "providerResponseId": "d0f92883-f675-4d83-a159-977b31f112fc",
+      "providerReportedModel": "deepseek-flash",
+      "requestBodySHA256": "a70a8e0d93edc3307b57e0b94f229969219e0917a500379b9b954adaff212a40",
+      "responseSHA256": "e269862cc7d25707f7d8102eb77b46f55e00e5f57e94a7a4aa91b75dc7f72025",
+      "httpStatus": 200,
+      "status": "SUCCEEDED",
+      "usage": {
+        "prompt_tokens": 663,
+        "completion_tokens": 47,
+        "total_tokens": 710,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 663
+      },
+      "elapsedThroughBodyMs": 1248
+    },
+    {
+      "slot": 2,
+      "kind": "ask",
+      "providerResponseId": "a60ba3b4-6e27-4e48-87b1-9be4f537f0a0",
+      "providerReportedModel": "deepseek-flash",
+      "requestBodySHA256": "6ac89b06a4d264a5468e1789de7126704600a4c6d32de95fadbaf62e404b01a6",
+      "responseSHA256": "a0b105fcd08b6b45286a7d25b5609a879a985b0ce91f692e9439ef89494c81ff",
+      "httpStatus": 200,
+      "status": "SUCCEEDED",
+      "usage": {
+        "prompt_tokens": 606,
+        "completion_tokens": 41,
+        "total_tokens": 647,
+        "prompt_tokens_details": {
+          "cached_tokens": 256
+        },
+        "prompt_cache_hit_tokens": 256,
+        "prompt_cache_miss_tokens": 350
+      },
+      "elapsedThroughBodyMs": 690
+    },
+    {
+      "slot": 3,
+      "kind": "extraction",
+      "providerResponseId": "29a1176e-1c5d-41a2-ac0b-dc9f4897c13e",
+      "providerReportedModel": "deepseek-flash",
+      "requestBodySHA256": "aa0e6e46f51410057a1daa550378b716d7e4920e3e6bdb21b22de4245d028815",
+      "responseSHA256": "699e4e0c1c948538d8dc773184d04a46197cd7a11f1967c5bbabff758030569b",
+      "httpStatus": 200,
+      "status": "SUCCEEDED",
+      "usage": {
+        "prompt_tokens": 663,
+        "completion_tokens": 47,
+        "total_tokens": 710,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 279
+      },
+      "elapsedThroughBodyMs": 788
+    },
+    {
+      "slot": 4,
+      "kind": "ask",
+      "providerResponseId": "6060e4c5-441c-412a-9c14-d8731dee14f9",
+      "providerReportedModel": "deepseek-flash",
+      "requestBodySHA256": "ddb9c21e665ba21cad0226b9787928c68f706b042058a3817264b00ae0ea7783",
+      "responseSHA256": "a1c846543a83559abe33582b9c1af8e4d51131519a593b14b57bc6956f733bbf",
+      "httpStatus": 200,
+      "status": "SUCCEEDED",
+      "usage": {
+        "prompt_tokens": 689,
+        "completion_tokens": 62,
+        "total_tokens": 751,
+        "prompt_tokens_details": {
+          "cached_tokens": 256
+        },
+        "prompt_cache_hit_tokens": 256,
+        "prompt_cache_miss_tokens": 433
+      },
+      "elapsedThroughBodyMs": 937
+    },
+    {
+      "slot": 5,
+      "kind": "extraction",
+      "providerResponseId": "d133843a-2f3a-4d56-bd01-1ae598ed6046",
+      "providerReportedModel": "deepseek-flash",
+      "requestBodySHA256": "d40e44b32fd493d2d67eb8b9f4783110700b56c2197caf6ebe8b2c45db8f2544",
+      "responseSHA256": "4fd5bb8f5d67f34c714349cbe1b1b614550c2e8a836f8c03de7e8e4ca8b9b35e",
+      "httpStatus": 200,
+      "status": "SUCCEEDED",
+      "usage": {
+        "prompt_tokens": 665,
+        "completion_tokens": 49,
+        "total_tokens": 714,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 281
+      },
+      "elapsedThroughBodyMs": 842
+    },
+    {
+      "slot": 6,
+      "kind": "ask",
+      "providerResponseId": "5af957be-6a94-4209-89d5-308431a213bc",
+      "providerReportedModel": "deepseek-flash",
+      "requestBodySHA256": "a52b1f173f66cc6409f0be70d7723c40fe4dd4d91305eb795c7e29a589ac7558",
+      "responseSHA256": "fc8d6829897e81db7ddc0c2b420a2b48b8e7d0fab9c40d6aeff173928b8d7339",
+      "httpStatus": 200,
+      "status": "SUCCEEDED",
+      "usage": {
+        "prompt_tokens": 692,
+        "completion_tokens": 62,
+        "total_tokens": 754,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 308
+      },
+      "elapsedThroughBodyMs": 741
+    },
+    {
+      "slot": 7,
+      "kind": "relation",
+      "providerResponseId": "8c2cc458-d013-4632-91ac-67544293b3c4",
+      "providerReportedModel": "deepseek-flash",
+      "requestBodySHA256": "19e26fea3722078263210c3a090a0518659ff25a24e5584d9bf25fdb13b28dec",
+      "responseSHA256": "bd7166fd214ac821fc20feb087517a89a7f0470f9a98bf3355cabc69ced3f572",
+      "httpStatus": 200,
+      "status": "SUCCEEDED",
+      "usage": {
+        "prompt_tokens": 751,
+        "completion_tokens": 74,
+        "total_tokens": 825,
+        "prompt_tokens_details": {
+          "cached_tokens": 512
+        },
+        "prompt_cache_hit_tokens": 512,
+        "prompt_cache_miss_tokens": 239
+      },
+      "elapsedThroughBodyMs": 1247
+    }
+  ],
+  "answerReadbacks": {
+    "old": {
+      "state": "SUCCEEDED",
+      "stale": false,
+      "statements": [
+        {
+          "text": "The supplied source states that the meridian acceptance archive contains 42 records. No conflicting value is provided in the supplied evidence.",
+          "citations": [
+            {
+              "citationId": "citation-2bc4625b-7eca-4255-ba3c-8b125dc50662",
+              "sourceId": "a84d0be6-1cb6-47dc-9d6f-14f12ab83646",
+              "sourceVersionId": "99f38a82-41a2-4191-961b-823806c55550",
+              "evidenceId": "795b0396-bf05-45db-92db-4802ae0fa3b5",
+              "exactQuote": "The meridian acceptance archive contains 42 records."
+            }
+          ]
+        }
+      ]
+    },
+    "both": {
+      "state": "SUCCEEDED",
+      "stale": false,
+      "statements": [
+        {
+          "text": "The supplied sources disagree: one states that the meridian acceptance archive contains 43 records, while the other states it contains 42 records. The available evidence does not resolve which value is correct.",
+          "citations": [
+            {
+              "citationId": "citation-82da5bcf-9430-42da-a459-d10969c45b81",
+              "sourceId": "e32b6ac0-5fba-4477-ae91-3b563a9daeca",
+              "sourceVersionId": "394f4511-d2de-47b6-b00f-775343876954",
+              "evidenceId": "39b15221-07d2-4af6-9e47-a1be247ad313",
+              "exactQuote": "The meridian acceptance archive contains 43 records."
+            },
+            {
+              "citationId": "citation-a1f0ff9c-5964-4f2b-8aad-f85db115cdd5",
+              "sourceId": "a84d0be6-1cb6-47dc-9d6f-14f12ab83646",
+              "sourceVersionId": "99f38a82-41a2-4191-961b-823806c55550",
+              "evidenceId": "795b0396-bf05-45db-92db-4802ae0fa3b5",
+              "exactQuote": "The meridian acceptance archive contains 42 records."
+            }
+          ]
+        }
+      ]
+    },
+    "current": {
+      "state": "SUCCEEDED",
+      "stale": false,
+      "statements": [
+        {
+          "text": "The supplied sources disagree: one states that the meridian acceptance archive contains 43 records, while another states that it contains 44 records. The available evidence does not resolve which figure is correct.",
+          "citations": [
+            {
+              "citationId": "citation-7406bbbf-bbc9-46f4-862d-519bf45956df",
+              "sourceId": "e32b6ac0-5fba-4477-ae91-3b563a9daeca",
+              "sourceVersionId": "394f4511-d2de-47b6-b00f-775343876954",
+              "evidenceId": "39b15221-07d2-4af6-9e47-a1be247ad313",
+              "exactQuote": "The meridian acceptance archive contains 43 records."
+            },
+            {
+              "citationId": "citation-c61015e6-c591-47fc-9a4c-63e1639a613a",
+              "sourceId": "a84d0be6-1cb6-47dc-9d6f-14f12ab83646",
+              "sourceVersionId": "e7c0f70a-4e9a-479d-a002-cd09f4794fac",
+              "evidenceId": "b8adaac8-93fe-4423-a7d6-ccdf6d939f5f",
+              "exactQuote": "The meridian acceptance archive contains 44 records."
+            }
+          ]
+        }
+      ]
+    },
+    "historical": {
+      "state": "SUCCEEDED",
+      "stale": true,
+      "statements": [
+        {
+          "text": "The supplied source states that the meridian acceptance archive contains 42 records. No conflicting value is provided in the supplied evidence.",
+          "citations": [
+            {
+              "citationId": "citation-2bc4625b-7eca-4255-ba3c-8b125dc50662",
+              "sourceId": "a84d0be6-1cb6-47dc-9d6f-14f12ab83646",
+              "sourceVersionId": "99f38a82-41a2-4191-961b-823806c55550",
+              "evidenceId": "795b0396-bf05-45db-92db-4802ae0fa3b5",
+              "exactQuote": "The meridian acceptance archive contains 42 records."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "submittedInputProvenance": [
+    {
+      "inputFile": "A-v1.txt",
+      "artifactBytes": 53,
+      "artifactSHA256": "d684b09cf9aab300c6b2383298cdc7848100d3be2aa64436c6bd6af638a26c27",
+      "submittedUTF8Bytes": 52,
+      "submittedSHA256": "55e72c839aabbcc2a5baebe8ad7dfb265f3c8583623452db6d4785d05194ff1e",
+      "normalization": "Only the artifact trailing LF is removed by the frozen fixture before source submission; semantic text unchanged."
+    },
+    {
+      "inputFile": "B-v1.txt",
+      "artifactBytes": 53,
+      "artifactSHA256": "154a9caef10fdfeb647d2248123ecfd698843ed348c4de3dc4a990221575b2a4",
+      "submittedUTF8Bytes": 52,
+      "submittedSHA256": "e0bbc6ea0311448ec04fdcfd08cf6ccf025e686902531bb3757123b4c03e53de",
+      "normalization": "Only the artifact trailing LF is removed by the frozen fixture before source submission; semantic text unchanged."
+    },
+    {
+      "inputFile": "A-v2.txt",
+      "artifactBytes": 53,
+      "artifactSHA256": "d1c1ecc2aca0b1c51b7e0e7b2316c7338380ee0232ff77722b1c72b463eb6df9",
+      "submittedUTF8Bytes": 52,
+      "submittedSHA256": "309d6391c01cef6362276de47c5ebe8caad74ed39ea84b428aafa59c5cf7bc9a",
+      "normalization": "Only the artifact trailing LF is removed by the frozen fixture before source submission; semantic text unchanged."
+    }
+  ],
+  "currentRunPaidAmount": null,
+  "billingScope": "Token provenance captured for these7 calls; no current-day invoice/export, not priced or zeroed. Prior daily billing reconciliation reused only within its original scope.",
+  "knownScopeLimits": {
+    "receiptProviderCallFk": "Existing v6 positive receipt field is nullable and NULL here; no direct receipt-call FK is asserted. Unique project/pair/policy and a separately recomputed original SourceVersion/Evidence/context input digest correlate the receipt.",
+    "rawEvidenceSpanSqlReread": "Not captured before owned DB disposal; an optional later read correctly returned database-not-found. Quotes, source-version/evidence tuples and independently recomputed receipt digest are verified. No live retry or fabricated SQL span snapshot.",
+    "independentReplay": "Prior current-implementation PostgreSQL/recovery and actual production read-only independent replay evidence reused; no new standalone full replay of the disposed live DB is asserted.",
+    "currentReleaseReboot": "Prior approved Windows reboot/recovery evidence reused; no new OS reboot today.",
+    "semanticCertification": "Constructed counts/citations and published AI reasoning are product evidence; certified population accuracy/recall/calibration remain N/A.",
+    "productionDeployment": "Operating checkout remains9717186c; no app start/migration/Vault/config change. Existing authority PostgreSQL started under explicit conditional approval; its normal recovery writes and the authorized new relation claim are distinguished from product data changes."
+  },
+  "artifactBindings": [
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/verified-live-result.json",
+      "bytes": 4165,
+      "sha256": "bbe7eea951067c114996a0e086258c169eae72209a39063e3dbab8e4a4054ab0"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/run/result.json",
+      "bytes": 1491,
+      "sha256": "d471518547ba2856ee77625bbb48d39ddc9a0fb55198d03cd7763669f38d0a64"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/run/answer-snapshots.json",
+      "bytes": 9295,
+      "sha256": "275e62fd9f27be7c5c6c2d63affa8327c7216947ca69b8dcc96aed8d23339379"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/run/final-scoped-database-snapshot.json",
+      "bytes": 55642,
+      "sha256": "b80fc659244a9b20717e0a2166d89b002d78d3e13f67812bd5a97e448be834ba"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/run/final-bound-authority-claims.json",
+      "bytes": 1140,
+      "sha256": "04f759e8e2c3b0eb024116bcdef4ef3e64614dcba6abb6e43b9b99b4602ddce5"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/run/shortcut-invocation.json",
+      "bytes": 403,
+      "sha256": "16e5aa77653eea0f3411757ab2172e8dd03bcaa2b29262e67e03837d098c23c2"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/run/ready-before-first-submission.json",
+      "bytes": 401,
+      "sha256": "2fe6adf69e6f5d64b914cc961509adddcc1ad11b22418d417ef5231c3e162ff9"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/operating-before.json",
+      "bytes": 34275,
+      "sha256": "5e06eb836448f282240ffd81f773d52a1f79ebe9485fc99f4dc896d606a50f8c"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/operating-after.json",
+      "bytes": 34311,
+      "sha256": "96eaa3d6331d78098f8e9171229cb75e195167caae47b8c8da6a31c486175dcc"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/authority-at-first-call.json",
+      "bytes": 1993,
+      "sha256": "ff141a20a15dcf4dcbc5973084ecd449d1cf5f438ab79518c1fd40a23a9558c9"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/authority-after.json",
+      "bytes": 2005,
+      "sha256": "edc379ca49bd1cd83c0b51773229578df0784475fe661c5cb5a4a944bc089761"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/cleanup-final.json",
+      "bytes": 373,
+      "sha256": "e1ebad28702ce6bc7485c995f4a490ea71d4580f107a88daea368b303edfd798"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/secret-and-release-scan.json",
+      "bytes": 165,
+      "sha256": "04b302c4a009d32b9a97adfa3d52cf5aef6a97eb16e72b0dfdfd936921546277"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/current-answer-ui.txt",
+      "bytes": 4427,
+      "sha256": "d06d01a4f37ac78c2a9ceea263b10a247983fd444ca65d51db7246e183644546"
+    },
+    {
+      "path": "C:/dev/artifacts/vp-full-completion-2026-10-12/final-installed-live-execution-20261019/historical-answer-ui.txt",
+      "bytes": 4301,
+      "sha256": "eabeca37f1757d8761e28cb76bf8420e39779e8c90aa8995fecf7440a3cb46c4"
+    }
+  ]
+}

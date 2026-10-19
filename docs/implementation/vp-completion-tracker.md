@@ -1,10 +1,32 @@
 # VP 완료 현황표
 
-> 상태: **IN_PROGRESS — COMPLETE 아님**  
+> 상태: **VP_PRODUCT_ACCEPTANCE_PASS — FINAL_CANONICAL_CLOSURE_PENDING (2026-10-19)**
+>
 > 최초 대조: 2026-09-29, `main@e9dd95588b39b76e8b29b8f42cfb08983172a7fa`  
 > 목적: VP의 통과 증거와 미완료 조건을 한곳에서 추적한다. 이 표는 [ADR-172](../architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md), [VP 구현계획](./vp-vampire-implementation-plan.md), [Definition of Done](./definition-of-done.md)을 대체하지 않는다.
 
 ## 갱신 규칙
+
+### 2026-10-19 최종 설치본 실AI 인수 PASS
+
+[최종 인수·종결 판정](./vp-full-completion-2026-10-12/final-acceptance-2026-10-19.md)과
+[고정 증거](./vp-full-completion-2026-10-12/final-acceptance-evidence-2026-10-19.json)를
+현재 제품 실행 판정으로 사용한다. 아래 과거 IN_PROGRESS/HOLD/NOT_RUN은 당시
+이력이다. 최종 코드 main C0(`c0e21c301c25dbc600c2af9ef048c750461b0260`) 설치 아이콘에서
+빈 격리 공간→A42→질문→B43→질문→A44수정→질문의 단일 실AI 여정이 PASS했다.
+실제 HTTP7(추출3/Ask3/관계1), 새 UNKNOWN/중복/재호출0이며 현재43·44와 두 인용,
+과거42 원문 보존/stale=true, 현재stale=false를 실제 화면·원장으로 확인했다.
+
+v6/선택 확률0.9는 유지했고 전역 UTC2026-10-19 기본100 counter0→1, 잔량99,
+reservation0이다. 기존841 allowance CLOSED·운영 데이터212테이블·Vault/config/
+.env·운영 checkout은 보존했다. 격리 프로세스/DB는 정리했고 운영 앱을 시작하지 않았다.
+기존 재부팅·독립 replay·권한/복구·형식 및 일별 청구 증거는 범위를 한정해 재사용한다.
+인증 Gold0/모집단 품질·이번 실행의 실제 청구액은 N/A이고 인간 인증으로 승격하지 않는다.
+
+남은 것은 최종 종결 문서/증거의 별도 Git 게시·merge와 사후 CI다. 그 전에는
+`VP_FINAL_ACCEPTANCE_COMPLETE`를 미리 선언하지 않는다. 코드·증거의 공식 게시가
+완료되면 현재 Gate 판정으로 종결하며 새로운 모델/인프라 연구나 사용자 지식 Review를
+추가하지 않는다. 이 기록은 push/PR/merge·운영 배포 승인이 아니다.
 
 ### 2026-10-18 최종 종료 대조
 

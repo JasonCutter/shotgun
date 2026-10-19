@@ -388,3 +388,22 @@ TS6 65와 release·정적/문서 Gate PASS다. 기본 v6 실제 앱3개, 새 neg
 제품 코드·정책·schema 변경 없이 미입증 경계를 검증했으며, pair 상태 API/UI와
 인증 의미 정확도·전체 VP 완료를 새로 주장하지 않는다. 일반 앱의 운영 AI 연결·
 활성화 및 좁은 최초 사용 인수는 별도 승인·유효 예산이 필요한 잔여 조건이다.
+
+### 2026-10-19 — 최종 설치 아이콘 단일 실AI 여정 PASS
+
+PR394는 Canonical main `c0e21c301c25dbc600c2af9ef048c750461b0260`에 병합됐고
+[main CI39108234072](https://github.com/JasonCutter/shotgun/actions/runs/39108234072)의
+Quality·Frontend·Required Gates가 SUCCESS다. 같은 main/tree의 실제 Windows
+설치881파일·전용 `.lnk`·정상 owner/application/worker/Ask에서 빈 공간→A/B/수정본→
+질문3 단일 여정을 실행했다. [최종 판정·재사용 범위](./final-acceptance-2026-10-19.md)와
+[증거 JSON](./final-acceptance-evidence-2026-10-19.json)에 실제7HTTP/5,111토큰,
+SourceVersion·Evidence·현재43/44·과거42/stale·claim/attempt/응답 결합을 고정한다.
+새 UNKNOWN/재호출0, 운영212테이블 해시 동일, 기본100/전역0→1/잔량99이며
+CLOSED841 허용과 옛 UNKNOWN1·동결 자료는 보존했다. 격리 runtime/DB 정리 완료다.
+
+신규 product 코드·정책·모델·의존성·migration 변경은 없다. 현재 결과는
+`VP_PRODUCT_ACCEPTANCE_PASS / FINAL_CANONICAL_CLOSURE_PENDING`이다. 기존 형식·
+복구·Windows reboot·독립 replay·일별 비용 PASS는 정확한 원래 범위에서 재사용하고,
+Gold0/인증 지표·건별 invoice/이번7회 실제 청구액·엄밀 adapter latency는 N/A로 둔다.
+최종 문서의 별도 게시·merge·사후 CI 뒤에 Canonical 종결을 판정한다. 운영 release
+교체/앱 시작·v11/SSC/새 모델/미지원 media/새 연구는 자동 재개하지 않는다.

@@ -35,7 +35,7 @@ Windows 설치·정상 실행·재부팅/복구 검증과 실제 AI를 사용한
 
 - 텍스트·문서: TXT, Markdown, HTML, PDF, DOCX, CSV, XLSX, PPTX.
 - URL: 지원되는 웹 문서의 수집·변경 감지와 버전 갱신.
-- 이미지: PNG/JPEG 원본 보존 및 별도 인가된 이미지 분석 경로. 생성된 설명은 **미검증 AI 관측**이며 원문 인용이나 사실로 자동 승격하지 않습니다. 이미지 분석은 Provider 구성과 활성화가 필요합니다.
+- 이미지: PNG/JPEG 원본 보존 및 별도 인가된 이미지 분석 경로. 생성된 설명은 **미검증 AI 관측**이며 원문 인용이나 사실로 자동 승격하지 않습니다. 분석 경로는 격리 인수로 검증했으며, 별도 승인 전 일반 운영에서는 OFF로 유지합니다. 실제 분석에는 Provider·정책 구성이 필요합니다.
 - 오디오·영상의 일반 제품 처리는 V1.0 지원 범위에 포함하지 않습니다.
 
 파일 접수 한도는 현재 **파일당 10 MiB**입니다. 형식별 변환 결과는 문서 구조에 따라 달라지며,
@@ -92,8 +92,9 @@ npm run backup:restore-safe -- --latest
 ```
 
 기본 백업 위치는 사용자 홈의 `Shotgun Backups`입니다. 백업에는 개인 원문·지식 데이터가 포함될 수 있으므로 공개하지 마세요.
-비밀 키는 백업에 포함되지 않으며 별도 안전 보관이 필요합니다. 삭제 이력 journal 설정과 복구 절차는
-[백업·복구 Runbook](docs/engineering/stage-12-1-backup-restore-runbook.md)을 따릅니다.
+비밀 키는 백업에 포함되지 않으며 별도 안전 보관이 필요합니다.
+백업·복구 절차는 [Runbook](docs/engineering/stage-12-1-backup-restore-runbook.md),
+삭제 이력 journal과 복원 차단 계약은 [ADR-171](docs/architecture/adr/ADR-171-t3-project-source-knowledge-reset.md)을 따릅니다.
 자동 백업 주기나 자동 retention이 기본으로 설정되는 것은 아닙니다.
 
 ## 검증 범위와 알려진 제한

@@ -1,195 +1,141 @@
-# Shotgun
+# Shotgun V1.0
 
-Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향으로 퍼져 나가며,
-새로운 연결·행동·콘텐츠를 만들어 내는 개인 지식 시스템입니다.
+**자료를 넣고 질문하면, 원문 근거와 함께 답하는 로컬 개인 지식 시스템입니다.**
 
-## 현재 단계
+Shotgun은 자료의 원본과 변경 이력을 보존하고, 근거가 연결된 지식을 자동으로 정리합니다.
+사용자는 개별 지식이나 AI 판단을 일일이 검토·승인할 필요 없이 **자료 투입 → 질문**의 두 동작으로 사용합니다.
 
-- Stage 12까지 완료되어 독립 Module Package, Assembly Manifest와 OSS Adapter 교체까지 검증된 상태
-- Knowledge Flow 기준본 구조화 원본: [`docs/architecture/knowledge-flow/knowledge-flow-baseline-v1.0.json`](docs/architecture/knowledge-flow/knowledge-flow-baseline-v1.0.json)
-- 생성된 Knowledge Flow HTML: [`docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html`](docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html)
-- Knowledge Flow Detailed Map: [`docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md`](docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md)
-- Phase 1–6 ADD: [`docs/architecture/add/README.md`](docs/architecture/add/README.md)
-- Frontend Architecture: [`docs/architecture/frontend/README.md`](docs/architecture/frontend/README.md)
-- 전역 ADR Registry: [`docs/architecture/adr/README.md`](docs/architecture/adr/README.md)
-- Contract Snapshot Registry: [`docs/architecture/contracts/README.md`](docs/architecture/contracts/README.md)
-- Stage 12.1 기록 분류: [`docs/architecture/stage-12-1/README.md`](docs/architecture/stage-12-1/README.md)
-- Engineering Evidence 분류: [`docs/engineering/README.md`](docs/engineering/README.md)
-- Generated Artifact Ownership: [`docs/governance/generated-artifact-ownership.md`](docs/governance/generated-artifact-ownership.md)
-- 최종 Cross-store Inventory: [`docs/inventory/README.md`](docs/inventory/README.md)
-- 상세 아키텍처 참고: `docs/shotgun_reference_architecture_strategy_ko.html`
-- 모듈 아키텍처 기준선: `docs/architecture/module-architecture/README.md`
-- 구현계획 기준선: `docs/implementation/README.md`
-- 우선순위는 복잡한 전체 구조보다 작동하는 MVP 완성
-- 원본 접수부터 Claim Canonical·인용 답변, Rich Knowledge·Compiled Truth와 Risk·Preview·Approval·Preflight·Verify Action 흐름까지 지원
+## 현재 버전
 
-## 문서 Canonical 운영
+**V1.0 · Application version `1.0.0` · VP 제품 인수 완료**
 
-Project Shotgun의 유일한 문서 Canonical 권한은 GitHub 저장소 `JasonCutter/shotgun`의 `main` 브랜치입니다.
+2026-10-20 사용자 결정에 따라 VP 완료 제품을 Shotgun V1.0으로 명명합니다.
+Windows 설치·정상 실행·재부팅/복구 검증과 실제 AI를 사용한 자료 A/B/수정본·질문·인용 여정을 포함합니다.
+이는 아래에 명시한 제품 범위의 완료이며, AI의 모든 의미 판단이 정확하다는 인증은 아닙니다.
 
-- Canonical 정책: [`docs/CANONICAL.md`](docs/CANONICAL.md)
-- Canonical Manifest: [`docs/canonical-manifest.yaml`](docs/canonical-manifest.yaml)
-- 최초 전환 결정: [`ADR-117`](docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md)
-- Cutover 활성화 및 레거시 이관 경계: [`ADR-120`](docs/architecture/adr/ADR-120-canonical-cutover-activation-and-legacy-migration-boundary.md)
-- ADR 번호·중복·소유권 경계: [`ADR-121`](docs/architecture/adr/ADR-121-identifier-stability-registry-and-duplicate-resolution-boundary.md)
-- 이관 계획과 완료 기록: [`docs/governance/documentation-sot-cutover-plan-260728001.md`](docs/governance/documentation-sot-cutover-plan-260728001.md)
-- 완료 증거: [`docs/engineering/documentation-legacy-migration-completion-260729001.md`](docs/engineering/documentation-legacy-migration-completion-260729001.md)
-- 현재 상태: **GitHub `main` Canonical active / documentation legacy migration complete / final inventory complete**
+- [V1.0 릴리스 범위·검증·제한](docs/implementation/releases/v1.0.0.md)
+- [VP 완료 현황과 증거](docs/implementation/vp-completion-tracker.md)
 
-Notion은 Candidate 작업 공간·미러·탐색 허브·Legacy Reference·기록 보관소이며, Google Drive 등 외부 저장소는 Reference 또는 Archive입니다. 외부에만 있는 문서는 Git PR로 이관·검토·승인·병합되기 전에는 새로운 구현을 지배하는 Canonical 문서가 아닙니다.
+## 무엇을 할 수 있나요?
 
-모든 보고서, 감사 결과, 검사 결과, 테스트 결과, 검증 기록 및 완료 증거는 Git으로 추적되는 저장소 문서로 기록합니다.
+| 동작           | 제품 동작                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| 자료 투입      | 텍스트·파일·URL을 등록하고 원본과 출처를 보존합니다.                                                   |
+| 자동 지식화    | 주장을 추출하고, 정책과 예산 안에서 중복·관계·충돌을 처리합니다. 판단이 부족하면 보류 상태를 남깁니다. |
+| 질문           | 접근 가능한 자료에서 근거를 찾아 출처가 연결된 답변을 제공합니다.                                      |
+| 자료 수정      | 새 SourceVersion을 생성하고, 새 질문에는 현재 버전의 근거를 사용합니다.                                |
+| 과거 답변 확인 | 당시 답변과 인용은 보존하며, 근거가 교체됐다면 오래된 답변이라는 표시를 제공합니다.                    |
+| 상태 확인      | 대기·처리 중·실패·판단 보류를 성공과 구분합니다.                                                       |
+| 안전한 운영    | 프로젝트 권한·민감도·호출 예산·실행 이력·중복 방지·백업/복구 경계를 적용합니다.                        |
 
-### 문서 검증
+로컬 앱과 저장소를 사용하지만 **AI 분석·답변은 설정된 외부 AI Provider를 호출할 수 있습니다.**
+자료의 외부 전송은 Provider 설정, 권한, 개인정보/민감도 정책과 실행 예산의 적용을 받습니다.
 
-```bash
-npm run docs:knowledge-flow:check
-npm run docs:validate
-npm run docs:links
-npm run docs:adr-index
-npm run docs:canonical
-npm run docs:drift
-```
+## 자료 형식과 범위
 
-Knowledge Flow 생성물 일치 검사와 `docs:validate`는 Quality CI의 필수 Step입니다. 상대 링크, ADR 소유권, Canonical·Evidence·Generated Registry, Contract Snapshot 경계와 이관 Drift를 검사합니다.
+- 텍스트·문서: TXT, Markdown, HTML, PDF, DOCX, CSV, XLSX, PPTX.
+- URL: 지원되는 웹 문서의 수집·변경 감지와 버전 갱신.
+- 이미지: PNG/JPEG 원본 보존 및 별도 인가된 이미지 분석 경로. 생성된 설명은 **미검증 AI 관측**이며 원문 인용이나 사실로 자동 승격하지 않습니다. 이미지 분석은 Provider 구성과 활성화가 필요합니다.
+- 오디오·영상의 일반 제품 처리는 V1.0 지원 범위에 포함하지 않습니다.
 
-## 개발 시작
+파일 접수 한도는 현재 **파일당 10 MiB**입니다. 형식별 변환 결과는 문서 구조에 따라 달라지며,
+복잡한 PDF 수식·글리프·배치의 완전한 복원이나 모든 문서의 의미 추출 정확도를 보장하지 않습니다.
 
-개발 환경은 [Stage 0 문서](docs/engineering/stage-0-development.md)를 따르고,
-Kernel 사용법은 [Stage 1 문서](docs/engineering/stage-1-kernel-runtime.md), 원본 접수와
-Asset Resolver는 [Stage 2 문서](docs/engineering/stage-2-intake-original-asset.md), 검색과 인용 답변은
-[Stage 7 문서](docs/engineering/stage-7-cited-search.md), Rich Knowledge와 Impact는
-[Stage 9 문서](docs/engineering/stage-9-knowledge-model.md), 안전한 외부 Action은
-[Stage 11 문서](docs/engineering/stage-11-risk-controlled-external-action.md), 모듈 재사용은
-[Stage 12 문서](docs/engineering/stage-12-module-reuse-validation.md)에서 확인합니다.
+## 실행
 
-### Bootstrap
+현재 검증된 Windows 사용 형태는 **소스 설치 + Shotgun 바로가기**입니다.
+범용 Windows 설치 프로그램이나 다중 사용자 공개 서비스 배포를 제공한다는 의미는 아닙니다.
+
+### 이미 설치한 경우
+
+Windows의 **Shotgun 바로가기**로 실행합니다. 일반 사용에는 별도의 Vite 개발 서버가 필요 없습니다.
+기본 주소는 `http://127.0.0.1:3000`이며 Backend와 빌드된 화면을 같은 주소에서 제공합니다.
+
+### 새 개발·개인 설치 환경
+
+필요한 환경:
+
+- Node.js 24 이상, npm 11 이상
+- Python 3.12와 고정된 문서 변환 의존성
+- Docker와 PostgreSQL/pgvector
+- DB·원본 저장소·보안 설정. AI 사용 시 인가된 credential·Provider·정책·전역 예산 설정
+
+[환경 준비](docs/engineering/stage-0-development.md)와 [.env.example](.env.example)을 확인한 뒤 **새 환경에서** 실행합니다.
+기존 운영 DB에 초기화/reset 명령을 실행하지 마세요.
 
 ```bash
-# 기본: npm ci → DB 기동·대기 → migrate → verify
+python -m pip install -r adapters/document-format-python/requirements.lock
+python -m pip install -r adapters/networkx-impact-oracle/requirements.lock
+
+# 의존성 설치 → DB 준비 → migration → 검증
 npm run bootstrap
 
-# DB 작업 없이 의존성만 설치
-npm run bootstrap:quick
-
-# 의존성 설치 없이 DB만 준비
-npm run bootstrap -- --skip-install
-
-# 명시적으로만 파괴적 DB reset 실행
-npm run bootstrap:reset
-```
-
-`--skip-db`와 `--reset-db`는 함께 사용할 수 없으며, 알 수 없는 옵션이나 하위 명령 실패는 즉시 오류로 종료됩니다.
-
-### 테스트 모드
-
-```bash
-# 빠른 로컬 피드백: unit + contract + architecture
-npm run test:quick
-
-# CI 기준: unit + contract + integration + architecture + Stage 12 package
-npm run test:ci
-```
-
-`npm test`는 CI 기준 범위를 유지하며 `test:ci`를 실행합니다.
-
-### Frontend Section 1 로컬 개발
-
-두 터미널에서 Backend와 독립 Frontend를 각각 실행합니다.
-
-```bash
-# Terminal 1
-npm run dev
-
-# Terminal 2
-npm run dev:web
-```
-
-- Frontend: `http://127.0.0.1:5173`
-- Backend: `http://127.0.0.1:3000`
-
-Section 1은 Local Loopback Development 전용입니다.
-
-### Local Launch (`npm run launch`)
-
-한 명령으로 Shotgun 전체를 로컬 개인 애플리케이션처럼 시작합니다
-(LPA-WP4 — Local Launch / Serving Usability).
-
-```bash
-# SPA build → DB verify → Backend 시작 → readiness → browser 자동 열기
+# 화면 빌드 → DB 검증 → 앱 시작 → readiness → 브라우저 열기
 npm run launch
 
-# 브라우저 자동 열기 없이 (headless/자동화)
+# 브라우저 자동 열기 없이 실행
 npm run launch -- --no-open
 ```
 
-- 시작 후: `http://127.0.0.1:3000` (PORT 변경 가능)
-- Backend와 built SPA가 **같은 origin**(single process)에서 서빙됩니다 —
-  일반 사용에 Vite 개발 서버가 필요하지 않습니다.
-- launch는 DB를 자동 생성/리셋하지 않습니다. DB/schema 문제는
-  `docker compose up -d --wait db`, `npm run db:migrate`, `npm run db:verify`
-  같은 corrective action을 안내합니다.
-- Ctrl+C / SIGTERM은 안전하게 종료됩니다(worker·pool 정리).
-- 개발자는 기존 `npm run dev` / `npm run dev:web` 워크플로를 그대로 사용할 수
-  있습니다.
-- 상세 계약: `docs/implementation/local-launch-serving-usability-implementation-request-260810001.md`
+`launch`는 DB를 자동 생성하거나 초기화하지 않습니다. AI 권한이나 설정이 없을 때 이를 우회해 호출하지 않습니다.
+상세 실행 계약은 [Local Launch](docs/implementation/local-launch-serving-usability-implementation-request-260810001.md)를 참고하세요.
 
-### Backup / Restore (Owner)
-
-Backup/Restore는 별도 스크립트 지식 없이 owner 명령만으로 사용할 수 있습니다
-(LPA-WP5 — Backup / Restore Owner Workflow). 기본 backup 위치는
-`<USER_HOME>/Shotgun Backups`입니다.
+## 백업과 복구
 
 ```bash
-# 1) 백업 생성 (기본 위치, 생성 직후 자동 integrity 검증 + 요약)
 npm run backup:create
-
-# 2) 외장 드라이브 등 다른 root에 백업
-npm run backup:create -- --root "E:\Shotgun Backups"
-
-# 3) 기존 exact-directory 방식 (legacy)
-npm run backup:create -- --output "C:\specific\backup-directory"
-
-# 4) 백업 목록 / metadata 확인
-npm run backup:list
-npm run backup:list -- --verify        # 목록의 각 backup을 실제 검증
-
-# 5) 백업 검증
+npm run backup:list -- --verify
 npm run backup:verify -- --latest
-npm run backup:verify -- --backup <directory>
 
-# 6) 안전 복원 (isolated/new target에만; active source는 절대 덮어쓰지 않음)
+# 현재 DB를 덮어쓰지 않는 격리 복원
 npm run backup:restore-safe -- --latest
-npm run backup:restore-safe -- --backup <directory>
 ```
 
-중요 사항:
+기본 백업 위치는 사용자 홈의 `Shotgun Backups`입니다. 백업에는 개인 원문·지식 데이터가 포함될 수 있으므로 공개하지 마세요.
+비밀 키는 백업에 포함되지 않으며 별도 안전 보관이 필요합니다. 삭제 이력 journal 설정과 복구 절차는
+[백업·복구 Runbook](docs/engineering/stage-12-1-backup-restore-runbook.md)을 따릅니다.
+자동 백업 주기나 자동 retention이 기본으로 설정되는 것은 아닙니다.
 
-- Backup Bundle에는 secret이 포함되지 않습니다 (`secretsIncluded: false`).
-- 그러나 backup에는 private Canonical/Asset 데이터가 있으므로 **공개 공유
-  금지** — public cloud-sync folder 사용 시 provider privacy/security를
-  확인하세요.
-- **자동 retention은 없습니다** — backup은 자동 삭제되지 않으며, 정기 백업을
-  설정하면 계속 disk를 사용합니다.
-- `<USER_HOME>/Shotgun Backups`가 source와 같은 physical disk라면 hardware
-  loss backup이 아닙니다. 별도 disk가 필요하면 `--root`로 외장 드라이브를
-  사용하세요.
-- 정기 백업은 OS scheduler(Windows Task Scheduler / macOS launchd / Linux
-  cron·systemd)가 `npm run backup:create`를 호출하는 방식으로 설정합니다.
-  상세: `docs/engineering/stage-12-1-backup-restore-runbook.md`
+## 검증 범위와 알려진 제한
 
-## MVP 목표
+- 실제 application·worker·PostgreSQL·Ask 경로의 인수와 권한·복구·실행 안전 검증을 완료했습니다.
+- 실제 AI 인수 여정에서 새 자료 추가·수정, 현재 인용, 과거 답변 보존과 `stale` 표시를 확인했습니다.
+- 이 인수 결과는 모든 자료에 대한 정확도 보장이 아닙니다. **독립 인증 Gold 기반의 모집단 Precision/Recall·Calibration은 미인증/N/A**입니다.
+- 높은 confidence나 관계 채택은 객관적 사실 인증이 아닙니다. 생성 답변·관계·이미지 설명은 원문 근거와 함께 판단해야 합니다.
+- 개발용 실험 코드는 제품의 기본 활성 기능이 아닙니다.
+- 기존 Discovery·외부 Action 등 아키텍처 기록의 모든 계획을 V1.0의 기본 활성 기능으로 광고하지 않습니다.
 
-1. 지식 원본을 등록합니다.
-2. 근거가 연결된 Fact와 Claim을 저장합니다.
-3. 관련 지식을 연결하고 탐색합니다.
-4. 검토된 지식에서 행동과 콘텐츠를 생성합니다.
+## 개발과 검증
 
-## 이름의 의미
+개발 화면을 별도로 실행하려면 두 터미널에서 `npm run dev`와 `npm run dev:web`을 사용합니다.
+Vite 기본 주소는 `http://127.0.0.1:5173`, Backend는 `http://127.0.0.1:3000`입니다.
 
-**Shotgun**은 지식이 한 점에만 머무르지 않고, 산탄총의 탄환처럼 여러 방향으로
-확산되어 새로운 지식 연결과 실제 활용으로 이어진다는 의미입니다.
+```bash
+npm run docs:validate
+npm run test:quick
+npm run test:ci
+npm run typecheck
+npm run lint
+npm run format:check
+```
 
-## 공개 범위
+PostgreSQL 테스트와 Frontend E2E는 **격리 테스트 DB**에서 수행합니다.
+GitHub CI의 Quality·Frontend·Required Gates가 공식 통합 검증을 수행합니다.
+정확한 완료 근거와 이전 실패·제한은 릴리스 기록과 원래 검증 문서에서 확인할 수 있습니다.
 
-이 프로젝트는 비공개 저장소로 운영합니다.
+## 설계와 기록
+
+문서 Canonical은 이 GitHub 저장소의 **`main`**입니다. 승인·로컬 검증·PR·병합·배포는 구분합니다.
+과거 Stage/Phase 계획은 개발 이력이며 최신 제품 상태를 대신하지 않습니다.
+
+- [Canonical 정책](docs/CANONICAL.md)
+- [ADR-172: VP 지식 권위](docs/architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md)
+- [ADR-173: 제품 우선 개발·평가 신뢰성](docs/architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)
+- [구현계획과 현재 제품 경로](docs/implementation/README.md)
+- [Module Architecture](docs/architecture/module-architecture/README.md)
+- [ADD](docs/architecture/add/README.md) · [ADR Registry](docs/architecture/adr/README.md)
+- [릴리스 전략](docs/implementation/release-strategy.md)
+
+GitHub 저장소는 공개입니다. 운영 자료·DB 덤프·백업·credential·`.env`는 공개 저장소에 올리지 않습니다.
+
+Shotgun이라는 이름은 한 점에 모인 지식이 여러 방향의 연결과 활용으로 이어진다는 뜻입니다.

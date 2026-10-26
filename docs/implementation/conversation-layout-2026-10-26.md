@@ -170,3 +170,58 @@ cases: t3-asset-erasure seeded its supposedly active 720-hour lease on
 and expired leases from PostgreSQL CURRENT_TIMESTAMP, preserving the existing
 720-hour lease invariant and the rejection assertion. No production erasure,
 lease, reset or authorization logic changed. The full required CI is rerun.
+
+## Owner-approved Paper finish
+
+The owner approved the editable Figma conversation/evidence designs, requested
+an off-white paper palette, then instructed the agent to finish the actual
+product. This continues the explicit publication, PR, main-merge and installed
+desktop rollout authorization above. Base: `main@44ed3ba9` (merged PR #398).
+This is a presentation finish, not a new VP Stage or final VP acceptance.
+
+- Design source: [conversation](https://www.figma.com/design/2EJrvJhB2ivdCJdT9Wyc4z?node-id=4-2)
+  and [contextual evidence](https://www.figma.com/design/2EJrvJhB2ivdCJdT9Wyc4z?node-id=11-6).
+  Both are editable, independently authored Shotgun components. Existing local
+  layer IDs, palette records and native Figma PNG exports were inspected. Figma
+  MCP design-context retrieval hit the Starter call limit; the known authoring
+  metadata and final exports are the explicit fallback, not an imported screenshot.
+- Palette: paper `#f7f2e8`, surface `#fffcf6`, ink `#302c26`, accent `#73573b`,
+  selection `#e7d9bf`, sidebar `#eee5d5`, border `#d8cdb9`. The implementation
+  darkens secondary text from `#746a5d` to `#6d6357` because the former failed
+  real browser contrast on the translucent sidebar (4.31:1).
+- Reuse the existing VP shell, Ask composer, icons, localization and typed
+  citation return. Only VP-scoped CSS tokens/layout and the already-localized
+  Add Source label change. No invented answer summaries, production questions,
+  schema, API, provider, budget, knowledge authority or data changes.
+- Floating 20px sidebar/evidence surfaces, 28px two-row composer and warm
+  shadows express the approved design. CSS backdrop blur progressively enhances
+  opaque fallbacks; reduced-transparency/forced-color preferences disable blur.
+  Recovery buttons and status messages keep full-width rows. Historical shell
+  mode retains its existing appearance.
+
+Reuse decision: retain the exact existing React/Router lockfile and the previous
+`ddsyasas/llm-wiki` (`e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`, MIT) and
+OpenKnowledge (`f2834c237639e2cff603817ed88182b33f83cf91`, GPL-3.0-or-later)
+`REFERENCE_ONLY` UX boundaries. No new runtime, dependency, extract, fork or
+package license/security/maintenance exposure is introduced. Apple macOS 27 kit
+availability/insertion was verified separately, but its supplied assets and SF
+fonts are excluded from the Windows/web implementation. Native CSS presentation
+extends existing components; a replacement UI runtime would unnecessarily
+replace working authority/draft/citation contracts. The OSS Role Matrix is unchanged.
+
+Verification: five existing isolated Chromium flows pass after the contrast fix,
+covering draft/pin persistence, Add Source/settings return, citation focus and
+pinned Evidence, route-denial negatives, keyboard, long-scroll return and
+1280/1440/1920px layouts. The existing axe WCAG 2 A/AA check passes. Frontend
+TypeScript and production build pass; only previously recorded crypto/chunk
+notices remain. All 409 frontend unit tests (50 files), changed-file lint/format,
+architecture, documentation and OSS gates pass. Required CI gates run before merge.
+Golden Corpus, adapter replacement, replay and migration drills are N/A: no
+data, event, adapter or processing contract changed. No live AI is invoked.
+
+Rollback: revert this CSS/label/documentation change as one commit and rebuild
+through the canonical main launcher; no data migration/reset is involved.
+Installed acceptance will check the merged SHA, health, preserved source and
+conversation counts, saved-answer read and citation-panel open/close. These
+release results are recorded in the PR after execution; local code alone is not
+claimed as the installed result.

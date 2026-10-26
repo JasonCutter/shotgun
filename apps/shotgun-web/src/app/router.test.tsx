@@ -207,9 +207,7 @@ describe('Product route guard authorization', () => {
       expect.objectContaining({ name: 'Shotgun', projectAccessRevision: '0' }),
     );
     expect(screen.queryByRole('heading', { name: 'Create your first Project' })).toBeNull();
-    expect(
-      await screen.findByRole('heading', { name: 'What would you like to know?' }),
-    ).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Home' })).toBeTruthy();
   });
 
   it('creates the internal knowledge space before guarding a direct Sources link', async () => {

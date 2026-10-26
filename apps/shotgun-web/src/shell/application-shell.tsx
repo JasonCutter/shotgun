@@ -16,6 +16,8 @@ import { AskShellProvider } from '../routes/ask-workspace.js';
 import { SessionBoundaryScreen } from '../session/session-boundary-screen.js';
 import { reconnectSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import { ConversationShell } from './conversation-shell.js';
+import { LegacyShell } from './legacy-shell.js';
+import { isConversationLayoutEnabled } from './conversation-layout.js';
 import { useConnectivityState } from './use-connectivity-state.js';
 
 export const ApplicationShell = () => {
@@ -126,7 +128,11 @@ const LocalizedApplicationShell = ({
                 >
                   <div className="application-shell">
                     <SkipLink />
-                    <ConversationShell shell={shell} controller={controller} offline={offline} />
+                    {isConversationLayoutEnabled(shell) ? (
+                      <ConversationShell shell={shell} controller={controller} offline={offline} />
+                    ) : (
+                      <LegacyShell shell={shell} controller={controller} offline={offline} />
+                    )}
                   </div>
                 </AskShellProvider>
               </OwnerCommandControllerProvider>

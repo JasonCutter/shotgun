@@ -170,7 +170,9 @@ test('conversation, drafts, pins, guarded evidence, keyboard and desktop layout'
   page,
 }, testInfo) => {
   const fixture = await installFixture(page);
-  await page.goto('/ask/conversations/conversation-a');
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: '무엇이 궁금하신가요?' })).toBeVisible();
+  await page.getByRole('link', { name: '자료의 차이와 공통점', exact: true }).click();
   await expect(page.getByText(/두 자료는 원문 근거를/)).toBeVisible();
   const input = page.locator('#global-ask-question');
   await input.fill('기존 대화의 작성 중 질문');

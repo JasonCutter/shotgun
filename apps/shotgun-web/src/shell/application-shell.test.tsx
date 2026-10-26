@@ -79,6 +79,7 @@ const shell: GlobalShellView = {
     },
   ],
   features: [
+    { id: 'vp-autonomous-knowledge', label: 'VP', availability: 'AVAILABLE' },
     { id: 'global-search', label: 'Global Search', availability: 'AVAILABLE' },
     { id: 'command-palette', label: 'Command Palette', availability: 'AVAILABLE' },
   ],

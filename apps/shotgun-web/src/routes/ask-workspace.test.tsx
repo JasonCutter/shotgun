@@ -605,9 +605,7 @@ describe('AskWorkspace', () => {
         </AppProviders>,
       );
 
-      expect(
-        await screen.findByRole('heading', { name: '무엇이 궁금하신가요?', level: 1 }),
-      ).toBeTruthy();
+      expect(await screen.findByRole('heading', { name: '질문', level: 1 })).toBeTruthy();
       const askMode = screen.getByLabelText('질문 방식');
       expect(within(askMode).getByRole('option', { name: '검증된 지식만 사용' })).toBeTruthy();
       expect(within(askMode).getByRole('option', { name: '선택한 소스 사용' })).toBeTruthy();
@@ -844,9 +842,7 @@ describe('AskWorkspace', () => {
 
     expect(screen.getByText('Loading Ask workspace…')).toBeTruthy();
     await waitFor(() => {
-      expect(
-        screen.getByRole('heading', { level: 1, name: 'What would you like to know?' }),
-      ).toBeTruthy();
+      expect(screen.getByRole('heading', { level: 1, name: 'Ask' })).toBeTruthy();
     });
 
     expect((screen.getByLabelText('Ask mode') as HTMLSelectElement).value).toBe('CANONICAL_ONLY');
@@ -2361,12 +2357,10 @@ describe('AskWorkspace', () => {
         </AppProviders>,
       );
 
-      expect(
-        await screen.findByRole('heading', { name: 'What would you like to know?', level: 1 }),
-      ).toBeTruthy();
+      expect(await screen.findByRole('heading', { name: 'Ask', level: 1 })).toBeTruthy();
       expect(
         screen.getByText(
-          'Select a conversation from the sidebar, or add sources and ask a question below.',
+          'Select an existing conversation on the right, or start a new question in the composer below.',
         ),
       ).toBeTruthy();
 
@@ -2429,7 +2423,7 @@ describe('AskWorkspace', () => {
       ).toBeTruthy();
       expect(
         screen.queryByText(
-          'Select a conversation from the sidebar, or add sources and ask a question below.',
+          'Select an existing conversation on the right, or start a new question in the composer below.',
         ),
       ).toBeNull();
     });
@@ -2481,7 +2475,7 @@ describe('AskWorkspace', () => {
       expect(await screen.findByRole('heading', { name: 'Source context', level: 2 })).toBeTruthy();
       expect(
         screen.queryByText(
-          'Select a conversation from the sidebar, or add sources and ask a question below.',
+          'Select an existing conversation on the right, or start a new question in the composer below.',
         ),
       ).toBeNull();
     });

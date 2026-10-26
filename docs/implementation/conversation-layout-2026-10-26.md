@@ -117,3 +117,17 @@ identity boundary. Under AGENTS.md, push/PR/merge require explicit separate owne
 approval. The remaining release path is approved publication/merge, canonical
 launcher update/restart, and installed-browser verification with existing data
 preserved. No launcher policy, shortcut or production files were changed.
+
+## Authorized release continuation
+
+On 2026-10-26 the owner explicitly approved GitHub publication, PR creation,
+main merge and desktop installed-product rollout. Publication and release
+verification are now authorized; their results will be recorded after execution.
+
+Release regression inspection found that the historical approved-knowledge
+product's browser tests still exercise ADR-146's original shell. The new layout
+is selected by the existing server-owned `vp-autonomous-knowledge` capability.
+The VP landing route remains Ask-guarded. The historical product retains the
+existing Home/Tree/Instrument/Conversation shell and its protected routes. This
+reuses the original components rather than rewriting legacy behavior. The new
+browser flow starts at `/` to prove the actual VP desktop landing experience.

@@ -47,6 +47,7 @@ import {
   sourcesLibraryQueryOptions,
 } from '../sources/sources-queries.js';
 import { useOwnerCommandController } from '../section3/global-tools.js';
+import { isConversationLayoutEnabled } from '../shell/conversation-layout.js';
 import { AskSupportControls, ConversationPane, GlobalComposer } from './ask-shell-presentation.js';
 
 const SOURCE_CONTEXT_QUERY: SourceLibraryQuery = {
@@ -1297,14 +1298,25 @@ export const AskCenterWorkspace = () => {
     mode && mode !== 'CANONICAL_ONLY' && mode !== 'AUTO_PROJECT_KNOWLEDGE',
   );
   const showEmptyLanding = !activeConversationId && !hasVisibleSupportControls;
+  const conversationLayout = isConversationLayoutEnabled(shell);
 
   return (
     <section className="route-page hfm-route-page ask-workspace">
-      <h1 tabIndex={-1} className={activeConversationId ? 'visually-hidden' : undefined}>
-        {activeConversationId ? t('ask.conversations') : t('layout.welcome')}
+      {!conversationLayout ? <p className="eyebrow">{t('ask.eyebrow')}</p> : null}
+      <h1
+        tabIndex={-1}
+        className={conversationLayout && activeConversationId ? 'visually-hidden' : undefined}
+      >
+        {conversationLayout
+          ? activeConversationId
+            ? t('ask.conversations')
+            : t('layout.welcome')
+          : t('ask.title')}
       </h1>
       {showEmptyLanding ? (
-        <p className="ask-empty-landing-hint">{t('ask.empty_landing_hint')}</p>
+        <p className="ask-empty-landing-hint">
+          {t(conversationLayout ? 'layout.empty_landing_hint' : 'ask.empty_landing_hint')}
+        </p>
       ) : null}
       <AskSupportControls
         mode={mode}
@@ -1341,9 +1353,14 @@ export const AskWorkspace = (props: {
 };
 
 /** Mounted only inside the authorized Ask route; failed loaders render no answer. */
-export const AskConversationWorkspace = () => (
-  <>
-    <AskCenterWorkspace />
-    <AskShellConversationPane showConversationList={false} />
-  </>
-);
+export const AskConversationWorkspace = () => {
+  const { shell } = useAskShell();
+  return (
+    <>
+      <AskCenterWorkspace />
+      {isConversationLayoutEnabled(shell) ? (
+        <AskShellConversationPane showConversationList={false} />
+      ) : null}
+    </>
+  );
+};

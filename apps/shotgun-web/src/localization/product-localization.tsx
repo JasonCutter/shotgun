@@ -8,6 +8,8 @@ export type ProductLocale = 'ko-KR' | 'en-US';
 
 const enUS = {
   'layout.new_chat': 'New conversation',
+  'layout.empty_landing_hint':
+    'Select a conversation from the sidebar, or add sources and ask a question below.',
   'layout.search': 'Search',
   'layout.library': 'Sources library',
   'layout.settings': 'Settings',
@@ -349,7 +351,7 @@ const enUS = {
   'ask.create_or_select_project': 'Create or select a Project before asking questions.',
   'ask.loading_workspace': 'Loading Ask workspace…',
   'ask.empty_landing_hint':
-    'Select a conversation from the sidebar, or add sources and ask a question below.',
+    'Select an existing conversation on the right, or start a new question in the composer below.',
   'ask.mode': 'Ask mode',
   'ask.source_context': 'Source context',
   'ask.source_selection_unavailable': 'Source selection is unavailable for this question context.',
@@ -917,6 +919,7 @@ export type ProductMessageKey = keyof typeof enUS;
 
 const koKR: Record<ProductMessageKey, string> = {
   'layout.new_chat': '새 대화',
+  'layout.empty_landing_hint': '왼쪽에서 대화를 선택하거나 자료를 추가하고 아래에 질문해 보세요.',
   'layout.search': '검색',
   'layout.library': '자료함',
   'layout.settings': '설정',
@@ -1257,7 +1260,8 @@ const koKR: Record<ProductMessageKey, string> = {
   'ask.answer_export': '답변 내보내기 결과',
   'ask.create_or_select_project': '질문하려면 프로젝트를 만들거나 선택하세요.',
   'ask.loading_workspace': '질문 작업공간을 불러오는 중…',
-  'ask.empty_landing_hint': '왼쪽에서 대화를 선택하거나 자료를 추가하고 아래에 질문해 보세요.',
+  'ask.empty_landing_hint':
+    '오른쪽에서 기존 대화를 선택하거나 아래 입력창에서 새 질문을 시작하세요.',
   'ask.mode': '질문 방식',
   'ask.source_context': '소스 범위',
   'ask.source_selection_unavailable': '이 질문 범위에서는 소스를 선택할 수 없습니다.',

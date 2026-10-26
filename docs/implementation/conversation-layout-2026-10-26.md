@@ -162,3 +162,11 @@ conversation pane. Workspace failures now have one owner, the center; the pane
 renders no duplicate error. Existing live-AI cases stayed skipped under their
 unchanged authorization gates. The complete CI suite is rerun after this fix and
 the dependency security patch.
+
+A subsequent full run passed all frontend E2E cases (91 passed, 6 existing live-AI
+skips), but the database suite found one calendar-expired fixture among 792
+cases: t3-asset-erasure seeded its supposedly active 720-hour lease on
+2026-09-23, so it actually expired on 2026-10-23. The fixture now derives active
+and expired leases from PostgreSQL CURRENT_TIMESTAMP, preserving the existing
+720-hour lease invariant and the rejection assertion. No production erasure,
+lease, reset or authorization logic changed. The full required CI is rerun.

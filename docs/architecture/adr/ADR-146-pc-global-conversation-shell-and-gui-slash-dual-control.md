@@ -5,6 +5,13 @@
 - **Accepted by owner:** 2026-08-15
 - **Subject exact head:** `c7d7133cf205350b357ffc2866dfb669e39ff851`
 - **Scope:** Shotgun PC Owner UI / Global Shell / Navigation / Conversation / Command boundary
+
+## 2026-10-26 locally approved conversation-layout amendment
+
+The owner approved the [conversation-first desktop layout](../../implementation/conversation-layout-2026-10-26.md): left navigation and conversation history, a central conversation with its bottom composer, and a contextual right-side source/evidence workspace. Sources and settings use the central workspace. The default three-column geometry, fixed right conversation pane and permanent instrument contents below are historical baselines superseded for this UI change. GUI/slash dual-control, proactive actionable states, protected routes, permission and command boundaries remain binding. ADR-172's single knowledge space remains authoritative; conversation grouping does not change Ask scope. Local approval and implementation do not constitute publication to Canonical `main` or release acceptance.
+
+The original decision below is preserved as history.
+
 - **Supersedes:** [ADR-145 — Human-Facing Minimalism and Slash Command Control Plane](ADR-145-human-facing-minimalism-and-slash-command-control-plane.md)
 
 ## Context

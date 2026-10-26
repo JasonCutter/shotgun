@@ -105,12 +105,25 @@ export const GlobalComposer = ({
   };
 
   return (
-    <form className="global-composer" aria-label="Global Composer" onSubmit={submit}>
+    <form
+      className={`global-composer${availableModes.length <= 1 ? ' global-composer--single-mode' : ''}`}
+      aria-label="Global Composer"
+      onSubmit={submit}
+    >
+      <Link
+        className="composer-add-source"
+        to="/sources?view=add"
+        aria-label={t('layout.add_source')}
+        title={t('layout.add_source')}
+      >
+        <span aria-hidden="true">+</span>
+      </Link>
       <label className="visually-hidden" htmlFor="global-ask-mode">
         {t('ask.mode')}
       </label>
       <select
         id="global-ask-mode"
+        hidden={availableModes.length <= 1}
         aria-label={t('ask.mode')}
         value={mode ?? ''}
         disabled={
@@ -136,6 +149,7 @@ export const GlobalComposer = ({
         id="global-ask-question"
         aria-label={t('ask.question')}
         value={question}
+        placeholder={t('layout.question_placeholder')}
         maxLength={10_000}
         disabled={!draftReady || outcomeUnknown}
         onChange={onChange}
@@ -276,6 +290,7 @@ export const AskSupportControls = ({
 };
 
 export type ConversationPaneProps = {
+  readonly showConversationList?: boolean;
   readonly workspace?: AskWorkspaceView;
   readonly runOverrides: Readonly<Record<string, AskAnswerRunSnapshot>>;
   readonly runEvents: Readonly<Record<string, AskAnswerRunEventsView>>;
@@ -291,6 +306,7 @@ export type ConversationPaneProps = {
 };
 
 export const ConversationPane = ({
+  showConversationList = true,
   workspace,
   runOverrides,
   runEvents,
@@ -307,7 +323,7 @@ export const ConversationPane = ({
   const conversation = workspace?.selectedConversation;
   return (
     <section className="conversation-pane" aria-label={t('ask.conversations')}>
-      {workspace && (workspace.conversations ?? []).length > 0 ? (
+      {showConversationList && workspace && (workspace.conversations ?? []).length > 0 ? (
         <ul className="ask-conversation-list" aria-label={t('ask.conversation_list')}>
           {(workspace.conversations ?? []).map((item) => {
             const selected = item.conversationId === conversation?.conversationId;

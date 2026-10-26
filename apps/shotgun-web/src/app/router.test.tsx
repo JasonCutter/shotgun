@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
+import type * as ApiClientModule from '@shotgun/api-client';
+
 import type {
   GlobalShellView,
   HomeActionCenterView,
@@ -13,6 +15,20 @@ import { AppProviders, type AppRuntime } from './providers.js';
 import { createFrontendQueryClient } from './query-client.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { createAppRouteObjects } from './router.js';
+import { layoutEligibility, layoutWorkspace } from '../test/conversation-layout-fixture.js';
+
+vi.mock('@shotgun/api-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof ApiClientModule>()),
+  createAskWorkspaceClient: () => ({
+    getWorkspace: vi.fn(async () => ({
+      ...layoutWorkspace(),
+      principalId: 'principal-1',
+      sessionId: 'session-1',
+      projectId: 'project-1',
+    })),
+    getProviderEligibility: vi.fn(async () => layoutEligibility),
+  }),
+}));
 
 describe('Product route guard authorization', () => {
   const activeSession: ProductSessionView = {
@@ -52,7 +68,9 @@ describe('Product route guard authorization', () => {
     const apiClient = {
       getSession: vi.fn().mockResolvedValue(session),
       bootstrapLocalOwner: vi.fn().mockResolvedValue(session),
-      getRouteGuardDecision: vi.fn(),
+      getRouteGuardDecision: vi
+        .fn()
+        .mockResolvedValue({ schemaVersion: '1.0.0', decision: 'ALLOW', masked: false }),
       getProjects: vi.fn().mockResolvedValue([]),
       getAISettings: vi.fn().mockResolvedValue({
         projectId: 'project-1',
@@ -189,7 +207,9 @@ describe('Product route guard authorization', () => {
       expect.objectContaining({ name: 'Shotgun', projectAccessRevision: '0' }),
     );
     expect(screen.queryByRole('heading', { name: 'Create your first Project' })).toBeNull();
-    expect(await screen.findByRole('heading', { name: 'Home' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'What would you like to know?' }),
+    ).toBeTruthy();
   });
 
   it('creates the internal knowledge space before guarding a direct Sources link', async () => {

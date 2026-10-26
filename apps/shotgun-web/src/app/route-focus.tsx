@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router';
 
-export const RouteFocus = () => {
+export const RouteFocus = ({ preserveScroll = false }: { readonly preserveScroll?: boolean }) => {
   const location = useLocation();
 
   useEffect(() => {
@@ -26,7 +26,7 @@ export const RouteFocus = () => {
 
       const heading = main.querySelector<HTMLElement>('h1[tabindex="-1"]');
       if (!heading) return false;
-      heading.focus();
+      heading.focus({ preventScroll: preserveScroll });
       return true;
     };
     const observer = new MutationObserver(() => {
@@ -43,7 +43,7 @@ export const RouteFocus = () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [location.pathname]);
+  }, [location.pathname, preserveScroll]);
 
   return null;
 };

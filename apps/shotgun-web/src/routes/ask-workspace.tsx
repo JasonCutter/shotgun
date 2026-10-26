@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,6 +14,7 @@ import { useLocation, useNavigate, useOutletContext } from 'react-router';
 
 import {
   createAskWorkspaceClient,
+  decodeConversationCitationReturnTarget,
   decodeAskCitationReturnState,
   type AskCitationReturnState,
   type AskAnswerRunEventsView,
@@ -172,8 +174,21 @@ export const AskShellProvider = ({
   const location = useLocation();
   const routeConversationId = useMemo(() => {
     const match = location.pathname.match(/^\/ask\/conversations\/([^/?#]+)/);
-    return match ? decodeURIComponent(match[1]!) : undefined;
-  }, [location.pathname]);
+    if (match) return decodeURIComponent(match[1]!);
+    const sourceMatch = location.pathname.match(/^\/sources\/([^/?#]+)/);
+    if (!sourceMatch) return undefined;
+    try {
+      const target = decodeConversationCitationReturnTarget(
+        (location.state as { citationReturnTarget?: unknown } | null)?.citationReturnTarget,
+      );
+      return decodeURIComponent(sourceMatch[1]!) === target.sourceId &&
+        new URLSearchParams(location.search).get('version') === target.sourceVersionId
+        ? target.conversationId
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [location.pathname, location.search, location.state]);
   const ownedClient = useMemo(() => createAskWorkspaceClient(), []);
   const askClient = client ?? ownedClient;
   const { registerLeaveGuard } = useLeaveGuard();
@@ -214,13 +229,15 @@ export const AskShellProvider = ({
     const isExactAskRoot = location.pathname === '/ask' || location.pathname === '/ask/';
     if (isExactAskRoot) {
       const hasUnsavedDraft = questionRef.current.trim().length > 0;
+      const explicitNewConversation =
+        (location.state as { newConversation?: unknown } | null)?.newConversation === true;
       const isUnsafePending =
         outcomeUnknown ||
         answerRunOutcomeUnknown ||
         pendingCommand !== undefined ||
         pendingAnswerRunCommand !== undefined;
 
-      if (!hasUnsavedDraft && !isUnsafePending) {
+      if ((!hasUnsavedDraft || explicitNewConversation) && !isUnsafePending) {
         if (activeConversationId !== undefined) {
           setActiveConversationId(undefined);
         }
@@ -230,6 +247,7 @@ export const AskShellProvider = ({
     activeConversationId,
     answerRunOutcomeUnknown,
     location.pathname,
+    location.state,
     outcomeUnknown,
     pendingAnswerRunCommand,
     pendingCommand,
@@ -247,6 +265,17 @@ export const AskShellProvider = ({
   }, [activeConversationId, shell.activeProject?.id]);
 
   const previousAskScopeKeyRef = useRef<string | undefined>(undefined);
+  const draftsRef = useRef(new Map<string, string>());
+  const draftScope = `${shell.principalId}:${shell.sessionId}:${shell.activeProject?.id}:${askScopeKey}`;
+  const previousDraftScopeRef = useRef(draftScope);
+  useLayoutEffect(() => {
+    if (previousDraftScopeRef.current === draftScope) return;
+    draftsRef.current.set(previousDraftScopeRef.current, questionRef.current);
+    previousDraftScopeRef.current = draftScope;
+    const restored = draftsRef.current.get(draftScope) ?? '';
+    questionRef.current = restored;
+    setQuestion(restored);
+  }, [draftScope]);
 
   const sourceLibrary = useQuery({
     ...sourcesLibraryQueryOptions(apiClient, shell, SOURCE_CONTEXT_QUERY),
@@ -450,6 +479,7 @@ export const AskShellProvider = ({
       void askClient
         .getWorkspace(activeConversationId, { signal: controller.signal })
         .then((value) => {
+          if (controller.signal.aborted) return;
           setWorkspace(value);
           setMode(value.defaultAskMode);
         })
@@ -733,10 +763,9 @@ export const AskShellProvider = ({
     });
     if (newConversationId !== activeConversationId) {
       setActiveConversationId(newConversationId);
-      if (location.pathname.startsWith('/ask')) {
-        navigate(`/ask/conversations/${encodeURIComponent(newConversationId)}`);
-      }
     }
+    const conversationRoute = `/ask/conversations/${encodeURIComponent(newConversationId)}`;
+    if (location.pathname !== conversationRoute) navigate(conversationRoute);
   };
 
   const submissionFromOutcome = async (
@@ -1165,9 +1194,15 @@ export const AskShellGlobalComposer = () => {
   );
 };
 
-export const AskShellConversationPane = () => {
+export const AskShellConversationPane = ({
+  showConversationList = true,
+}: {
+  readonly showConversationList?: boolean;
+}) => {
   const {
     workspace,
+    activeConversationId,
+    error,
     runOverrides,
     runEvents,
     answerRunMutationPending,
@@ -1188,9 +1223,18 @@ export const AskShellConversationPane = () => {
   } = useAskShell();
   const { t } = useProductLocalization();
 
+  if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
+  if (
+    activeConversationId &&
+    workspace?.selectedConversation?.conversationId !== activeConversationId
+  ) {
+    return <LoadingState message={t('ask.loading_workspace')} />;
+  }
+
   return (
     <>
       <ConversationPane
+        showConversationList={showConversationList}
         workspace={workspace}
         runOverrides={runOverrides}
         runEvents={runEvents}
@@ -1256,8 +1300,9 @@ export const AskCenterWorkspace = () => {
 
   return (
     <section className="route-page hfm-route-page ask-workspace">
-      <p className="eyebrow">{t('ask.eyebrow')}</p>
-      <h1 tabIndex={-1}>{t('ask.title')}</h1>
+      <h1 tabIndex={-1} className={activeConversationId ? 'visually-hidden' : undefined}>
+        {activeConversationId ? t('ask.conversations') : t('layout.welcome')}
+      </h1>
       {showEmptyLanding ? (
         <p className="ask-empty-landing-hint">{t('ask.empty_landing_hint')}</p>
       ) : null}
@@ -1294,3 +1339,11 @@ export const AskWorkspace = (props: {
     </AskShellProvider>
   );
 };
+
+/** Mounted only inside the authorized Ask route; failed loaders render no answer. */
+export const AskConversationWorkspace = () => (
+  <>
+    <AskCenterWorkspace />
+    <AskShellConversationPane showConversationList={false} />
+  </>
+);

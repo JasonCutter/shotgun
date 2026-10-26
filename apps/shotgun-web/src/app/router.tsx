@@ -17,7 +17,7 @@ import { PreferencesWorkspace } from '../routes/settings/preferences-workspace.j
 import { ProjectsWorkspace } from '../routes/settings/projects-workspace.js';
 import { SourcesWorkspace } from '../routes/sources-workspace.js';
 import { SourceDetailWorkspace } from '../routes/source-detail-workspace.js';
-import { AskWorkspace } from '../routes/ask-workspace.js';
+import { AskConversationWorkspace } from '../routes/ask-workspace.js';
 import { KnowledgeWorkspace } from '../routes/knowledge-workspace.js';
 import { KnowledgeDetailWorkspace } from '../routes/knowledge-detail-workspace.js';
 import { KnowledgeCompareWorkspace } from '../routes/knowledge-compare-workspace.js';
@@ -141,7 +141,17 @@ export const createAppRouteObjects = (runtime: AppRuntime) => [
     hydrateFallbackElement: <LoadingState message="Session 확인 중" />,
     errorElement: <RouteError />,
     children: [
-      { index: true, element: <HomePage /> },
+      {
+        index: true,
+        loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
+        element: <AskConversationWorkspace />,
+      },
+      {
+        path: 'home',
+        loader: guardedRouteLoader(runtime, { routeId: 'home', href: '/' }),
+        element: <HomePage />,
+        errorElement: <RouteError />,
+      },
       {
         path: 'sources',
         loader: guardedRouteLoader(runtime, { routeId: 'sources', href: '/sources' }),
@@ -157,13 +167,13 @@ export const createAppRouteObjects = (runtime: AppRuntime) => [
       {
         path: 'ask',
         loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
-        element: <AskWorkspace />,
+        element: <AskConversationWorkspace />,
         errorElement: <RouteError />,
       },
       {
         path: 'ask/conversations/:conversationId',
         loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
-        element: <AskWorkspace />,
+        element: <AskConversationWorkspace />,
         errorElement: <RouteError />,
       },
       {

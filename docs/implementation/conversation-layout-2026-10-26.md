@@ -155,3 +155,10 @@ now flags the existing Vite/undici pins. The gate was not weakened.
   ownership stays unchanged. Existing build, frontend, adapter/authority contract
   and CI checks are rerun before merge. Rollback reverts manifests and lockfile
   together, without any database operation.
+
+The first historical frontend E2E run passed 90 cases and failed one inaccessible-
+conversation case: the same NOT_FOUND notice was rendered in both the center and
+conversation pane. Workspace failures now have one owner, the center; the pane
+renders no duplicate error. Existing live-AI cases stayed skipped under their
+unchanged authorization gates. The complete CI suite is rerun after this fix and
+the dependency security patch.

@@ -1224,7 +1224,8 @@ export const AskShellConversationPane = ({
   } = useAskShell();
   const { t } = useProductLocalization();
 
-  if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
+  // The center owns the workspace failure. Do not repeat it in the conversation.
+  if (error) return null;
   if (
     activeConversationId &&
     workspace?.selectedConversation?.conversationId !== activeConversationId

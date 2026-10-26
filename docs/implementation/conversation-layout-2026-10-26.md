@@ -133,3 +133,25 @@ reuses the original components rather than rewriting legacy behavior. The new
 browser flow starts at `/` to prove the actual VP desktop landing experience.
 
 The read projection advertises `vp-conversation-layout` only when the existing automatic-knowledge composition is active. The older `vp-autonomous-knowledge` capability describes supported knowledge functionality and is not reused as a presentation-mode selector. No backend processing or permission policy changes. The shell contract tests cover active, legacy and no-project cases.
+
+## Required CI security repair
+
+PR #398's first full Quality run failed the existing high-severity npm audit gate.
+The UI did not introduce the vulnerable packages; the current advisory database
+now flags the existing Vite/undici pins. The gate was not weakened.
+
+- `vite` is pinned to **8.1.6**, upstream commit
+  `dade886f0cc17fedf777eff804593d2af182abd4`, MIT. Its existing frontend 8.1.5
+  and test-only 8.3.1 copies are deduplicated to the patched 8.1 line via an exact
+  override. No major upgrade or new tool is introduced.
+- `undici` is pinned to **7.30.1**, npm gitHead
+  `7507102a675b082a71437f0a00681e537875556c`, MIT, for jsdom's existing test
+  dependency. This does not replace Node's fetch or Shotgun's provider adapter.
+- Primary advisories: [Vite Windows editor issue](https://github.com/advisories/GHSA-587h-7wmj-h5pm)
+  and [undici response handling](https://github.com/advisories/GHSA-xjj6-f33q-929c).
+- `npm run oss:audit` now passes: no high/critical findings. Seven pre-existing
+  low/moderate package findings remain; this is not a claim of a clean audit.
+- Source Registry adds both exact package/commit/license decisions. Role Matrix
+  ownership stays unchanged. Existing build, frontend, adapter/authority contract
+  and CI checks are rerun before merge. Rollback reverts manifests and lockfile
+  together, without any database operation.

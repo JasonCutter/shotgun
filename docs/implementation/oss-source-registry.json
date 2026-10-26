@@ -1070,7 +1070,10 @@
       "name": "Docling",
       "stages": [8],
       "officialSource": "https://github.com/docling-project/docling",
-      "pin": { "type": "git-tag", "value": "v2.130.0" },
+      "pin": {
+        "type": "git-tag",
+        "value": "v2.130.0"
+      },
       "license": {
         "spdx": "MIT",
         "status": "VERIFIED",
@@ -1097,7 +1100,10 @@
       "name": "Microsoft MarkItDown",
       "stages": [8],
       "officialSource": "https://github.com/microsoft/markitdown",
-      "pin": { "type": "pypi-release", "value": "0.1.6" },
+      "pin": {
+        "type": "pypi-release",
+        "value": "0.1.6"
+      },
       "license": {
         "spdx": "MIT",
         "status": "VERIFIED",
@@ -1117,7 +1123,10 @@
       "name": "PyMuPDF",
       "stages": [8],
       "officialSource": "https://github.com/pymupdf/PyMuPDF",
-      "pin": { "type": "pypi-release", "value": "1.28.0" },
+      "pin": {
+        "type": "pypi-release",
+        "value": "1.28.0"
+      },
       "license": {
         "spdx": "AGPL-3.0-only OR LicenseRef-Artifex-Commercial",
         "status": "VERIFIED",
@@ -1225,7 +1234,11 @@
       "name": "openpyxl",
       "stages": [8],
       "officialSource": "https://foss.heptapod.net/openpyxl/openpyxl",
-      "pin": { "type": "pypi-lock", "package": "openpyxl", "value": "3.1.5" },
+      "pin": {
+        "type": "pypi-lock",
+        "package": "openpyxl",
+        "value": "3.1.5"
+      },
       "license": {
         "spdx": "MIT",
         "status": "VERIFIED",
@@ -1302,7 +1315,11 @@
       "name": "Pillow",
       "stages": [8],
       "officialSource": "https://github.com/python-pillow/Pillow",
-      "pin": { "type": "pypi-lock", "package": "Pillow", "value": "12.3.0" },
+      "pin": {
+        "type": "pypi-lock",
+        "package": "Pillow",
+        "value": "12.3.0"
+      },
       "license": {
         "spdx": "MIT-CMU",
         "status": "VERIFIED",
@@ -1547,7 +1564,11 @@
       "name": "React",
       "stages": [12],
       "officialSource": "https://github.com/facebook/react",
-      "pin": { "type": "npm-lock", "package": "react", "value": "19.2.8" },
+      "pin": {
+        "type": "npm-lock",
+        "package": "react",
+        "value": "19.2.8"
+      },
       "license": {
         "spdx": "MIT",
         "status": "VERIFIED",
@@ -1720,7 +1741,10 @@
       "name": "Next.js",
       "stages": [12],
       "officialSource": "https://github.com/vercel/next.js",
-      "pin": { "type": "review-record", "value": "reviewed 2026-07-22" },
+      "pin": {
+        "type": "review-record",
+        "value": "reviewed 2026-07-22"
+      },
       "license": {
         "spdx": "MIT",
         "status": "VERIFIED",
@@ -1740,7 +1764,10 @@
       "name": "Redux",
       "stages": [12],
       "officialSource": "https://github.com/reduxjs/redux",
-      "pin": { "type": "review-record", "value": "reviewed 2026-07-22" },
+      "pin": {
+        "type": "review-record",
+        "value": "reviewed 2026-07-22"
+      },
       "license": {
         "spdx": "MIT",
         "status": "VERIFIED",
@@ -1760,7 +1787,10 @@
       "name": "Zustand",
       "stages": [12],
       "officialSource": "https://github.com/pmndrs/zustand",
-      "pin": { "type": "review-record", "value": "reviewed 2026-07-22" },
+      "pin": {
+        "type": "review-record",
+        "value": "reviewed 2026-07-22"
+      },
       "license": {
         "spdx": "MIT",
         "status": "VERIFIED",
@@ -1881,6 +1911,62 @@
       "boundary": "AssetStoragePort",
       "replacement": "Any local or object-store adapter must pass the same contract suite",
       "recheckTrigger": "Hash algorithm change or new storage adapter"
+    },
+    {
+      "id": "vite-conversation-layout-security",
+      "name": "vite",
+      "stages": [12],
+      "officialSource": "https://github.com/vitejs/vite",
+      "pin": {
+        "type": "npm-lock",
+        "package": "vite",
+        "value": "8.1.6"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Installed LICENSE, npm version metadata, package-lock integrity; upstream commit dade886f0cc17fedf777eff804593d2af182abd4"
+      },
+      "decision": "ADOPT",
+      "scope": "Existing SPA build/dev/test tool behind the frontend build boundary; same-major security patch only. No new domain or Canonical owner.",
+      "security": "2026-10-26: high-severity audit gate repaired; see docs/implementation/conversation-layout-2026-10-26.md. Lower-severity existing findings are recorded, not waived.",
+      "maintenance": "Active upstream release; exact version and integrity locked, upstream commit dade886f0cc17fedf777eff804593d2af182abd4",
+      "evidence": [
+        "npm package metadata and upstream release tag/gitHead verified",
+        "npm run oss:audit passes its existing high threshold",
+        "Full existing CI, frontend build and contract gates remain required"
+      ],
+      "boundary": "Existing SPA build/dev/test tool behind the frontend build boundary",
+      "replacement": "Revert package manifests, overrides and lockfile together; no data migration",
+      "recheckTrigger": "Upstream advisory, major upgrade, frontend build/test compatibility regression"
+    },
+    {
+      "id": "undici-conversation-layout-security",
+      "name": "undici",
+      "stages": [12],
+      "officialSource": "https://github.com/nodejs/undici",
+      "pin": {
+        "type": "npm-lock",
+        "package": "undici",
+        "value": "7.30.1"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Installed LICENSE, npm version metadata, package-lock integrity; upstream commit 7507102a675b082a71437f0a00681e537875556c"
+      },
+      "decision": "ADOPT",
+      "scope": "Existing jsdom HTTP dependency behind the frontend test boundary; same-major security patch only. No new domain or Canonical owner.",
+      "security": "2026-10-26: high-severity audit gate repaired; see docs/implementation/conversation-layout-2026-10-26.md. Lower-severity existing findings are recorded, not waived.",
+      "maintenance": "Active upstream release; exact version and integrity locked, upstream commit 7507102a675b082a71437f0a00681e537875556c",
+      "evidence": [
+        "npm package metadata and upstream release tag/gitHead verified",
+        "npm run oss:audit passes its existing high threshold",
+        "Full existing CI, frontend build and contract gates remain required"
+      ],
+      "boundary": "Existing jsdom HTTP dependency behind the frontend test boundary",
+      "replacement": "Revert package manifests, overrides and lockfile together; no data migration",
+      "recheckTrigger": "Upstream advisory, major upgrade, frontend build/test compatibility regression"
     }
   ]
 }

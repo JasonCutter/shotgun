@@ -82,15 +82,14 @@ describe('ADR-171 Asset erasure owner', () => {
     contentHash: string;
     active: boolean;
   }) => {
-    const issuedAt = input.active
-      ? new Date('2026-09-23T01:00:00.000Z')
-      : new Date('2026-08-22T01:00:00.000Z');
     await adminPool.query(
       `INSERT INTO asset.staging_asset_leases (
          lease_id, reference_digest, project_id, draft_id, item_id, principal_id,
          input_kind, storage_key, content_hash, size_bytes, issued_at, expires_at, created_at
-       ) VALUES ($1, $2, $3, $4, $5, 't3-test', 'FILE', $6, $7, 18,
-                 $8::timestamptz, $8::timestamptz + interval '720 hours', $8::timestamptz)`,
+       ) SELECT $1, $2, $3, $4, $5, 't3-test', 'FILE', $6, $7, 18,
+                issued_at, issued_at + interval '720 hours', issued_at
+         FROM (SELECT CURRENT_TIMESTAMP - CASE WHEN $8::boolean
+                 THEN interval '0 hours' ELSE interval '721 hours' END AS issued_at) AS timing`,
       [
         randomUUID(),
         `sha256:${createHash('sha256').update(randomUUID()).digest('hex')}`,
@@ -99,7 +98,7 @@ describe('ADR-171 Asset erasure owner', () => {
         `item-${randomUUID()}`,
         input.storageKey,
         input.contentHash,
-        issuedAt,
+        input.active,
       ],
     );
   };

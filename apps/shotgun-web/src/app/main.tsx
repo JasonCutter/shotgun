@@ -43,6 +43,7 @@ import { purgeProjectScopedCaches, purgeProtectedSessionCaches } from './query-k
 import { createAppRouter } from './router.js';
 import '../styles/tokens.css';
 import '../styles/application.css';
+import '../styles/conversation-shell.css';
 
 import { createSessionCycleState } from '../session/session-query.js';
 

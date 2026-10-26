@@ -23,6 +23,22 @@ const scope: FrontendReadScope = {
 };
 
 describe('Frontend Shell HFM-S3 persistent navigation', () => {
+  it('advertises the conversation layout only in the active VP composition', async () => {
+    const legacy = await new InMemoryGlobalShellProjection().getShell(scope);
+    expect(
+      legacy.features.find((feature) => feature.id === 'vp-conversation-layout'),
+    ).toBeUndefined();
+    const vp = new InMemoryGlobalShellProjection(undefined, undefined, true);
+    expect(
+      (await vp.getShell(scope)).features.find((feature) => feature.id === 'vp-conversation-layout')
+        ?.availability,
+    ).toBe('AVAILABLE');
+    expect(
+      (await vp.getShell({ ...scope, activeProject: null, accessibleProjects: [] })).features.find(
+        (feature) => feature.id === 'vp-conversation-layout',
+      )?.availability,
+    ).toBe('HIDDEN');
+  });
   it('projects the server-authoritative Source count, including an explicit zero state', async () => {
     const projection = new InMemoryGlobalShellProjection(undefined, async (input) =>
       input.activeProject ? 0 : undefined,

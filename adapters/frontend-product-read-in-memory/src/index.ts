@@ -132,6 +132,15 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
           ]
         : [],
       features: [
+        ...(this.automaticKnowledgeEnabled
+          ? [
+              {
+                id: 'vp-conversation-layout',
+                label: 'Conversation-first VP workspace',
+                availability: projectReady ? ('AVAILABLE' as const) : ('HIDDEN' as const),
+              },
+            ]
+          : []),
         {
           id: 'vp-autonomous-knowledge',
           label: 'Automatic project knowledge',

@@ -1334,6 +1334,14 @@
       "scope": "development-strategy-and-vp05-evidence-interpretation",
       "statusAuthority": "LOCAL_AUDIT_NOT_PRODUCT_COMPLETION",
       "canonicalPublication": "PENDING_REVIEWED_MAIN_MERGE"
+    },
+    {
+      "id": "CONVERSATION-LAYOUT-20261026",
+      "path": "docs/implementation/conversation-layout-2026-10-26.md",
+      "class": "IMPLEMENTATION_VERIFICATION",
+      "scope": "frontend-conversation-first-desktop-layout",
+      "statusAuthority": "LOCAL_VERIFICATION_NOT_RELEASE_ACCEPTANCE",
+      "canonicalPublication": "PENDING_REVIEWED_MAIN_MERGE"
     }
   ],
   "rules": {

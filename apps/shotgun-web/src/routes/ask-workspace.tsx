@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,6 +14,7 @@ import { useLocation, useNavigate, useOutletContext } from 'react-router';
 
 import {
   createAskWorkspaceClient,
+  decodeConversationCitationReturnTarget,
   decodeAskCitationReturnState,
   type AskCitationReturnState,
   type AskAnswerRunEventsView,
@@ -45,6 +47,7 @@ import {
   sourcesLibraryQueryOptions,
 } from '../sources/sources-queries.js';
 import { useOwnerCommandController } from '../section3/global-tools.js';
+import { isConversationLayoutEnabled } from '../shell/conversation-layout.js';
 import { AskSupportControls, ConversationPane, GlobalComposer } from './ask-shell-presentation.js';
 
 const SOURCE_CONTEXT_QUERY: SourceLibraryQuery = {
@@ -172,8 +175,21 @@ export const AskShellProvider = ({
   const location = useLocation();
   const routeConversationId = useMemo(() => {
     const match = location.pathname.match(/^\/ask\/conversations\/([^/?#]+)/);
-    return match ? decodeURIComponent(match[1]!) : undefined;
-  }, [location.pathname]);
+    if (match) return decodeURIComponent(match[1]!);
+    const sourceMatch = location.pathname.match(/^\/sources\/([^/?#]+)/);
+    if (!sourceMatch) return undefined;
+    try {
+      const target = decodeConversationCitationReturnTarget(
+        (location.state as { citationReturnTarget?: unknown } | null)?.citationReturnTarget,
+      );
+      return decodeURIComponent(sourceMatch[1]!) === target.sourceId &&
+        new URLSearchParams(location.search).get('version') === target.sourceVersionId
+        ? target.conversationId
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [location.pathname, location.search, location.state]);
   const ownedClient = useMemo(() => createAskWorkspaceClient(), []);
   const askClient = client ?? ownedClient;
   const { registerLeaveGuard } = useLeaveGuard();
@@ -214,13 +230,15 @@ export const AskShellProvider = ({
     const isExactAskRoot = location.pathname === '/ask' || location.pathname === '/ask/';
     if (isExactAskRoot) {
       const hasUnsavedDraft = questionRef.current.trim().length > 0;
+      const explicitNewConversation =
+        (location.state as { newConversation?: unknown } | null)?.newConversation === true;
       const isUnsafePending =
         outcomeUnknown ||
         answerRunOutcomeUnknown ||
         pendingCommand !== undefined ||
         pendingAnswerRunCommand !== undefined;
 
-      if (!hasUnsavedDraft && !isUnsafePending) {
+      if ((!hasUnsavedDraft || explicitNewConversation) && !isUnsafePending) {
         if (activeConversationId !== undefined) {
           setActiveConversationId(undefined);
         }
@@ -230,6 +248,7 @@ export const AskShellProvider = ({
     activeConversationId,
     answerRunOutcomeUnknown,
     location.pathname,
+    location.state,
     outcomeUnknown,
     pendingAnswerRunCommand,
     pendingCommand,
@@ -247,6 +266,17 @@ export const AskShellProvider = ({
   }, [activeConversationId, shell.activeProject?.id]);
 
   const previousAskScopeKeyRef = useRef<string | undefined>(undefined);
+  const draftsRef = useRef(new Map<string, string>());
+  const draftScope = `${shell.principalId}:${shell.sessionId}:${shell.activeProject?.id}:${askScopeKey}`;
+  const previousDraftScopeRef = useRef(draftScope);
+  useLayoutEffect(() => {
+    if (previousDraftScopeRef.current === draftScope) return;
+    draftsRef.current.set(previousDraftScopeRef.current, questionRef.current);
+    previousDraftScopeRef.current = draftScope;
+    const restored = draftsRef.current.get(draftScope) ?? '';
+    questionRef.current = restored;
+    setQuestion(restored);
+  }, [draftScope]);
 
   const sourceLibrary = useQuery({
     ...sourcesLibraryQueryOptions(apiClient, shell, SOURCE_CONTEXT_QUERY),
@@ -450,6 +480,7 @@ export const AskShellProvider = ({
       void askClient
         .getWorkspace(activeConversationId, { signal: controller.signal })
         .then((value) => {
+          if (controller.signal.aborted) return;
           setWorkspace(value);
           setMode(value.defaultAskMode);
         })
@@ -733,10 +764,9 @@ export const AskShellProvider = ({
     });
     if (newConversationId !== activeConversationId) {
       setActiveConversationId(newConversationId);
-      if (location.pathname.startsWith('/ask')) {
-        navigate(`/ask/conversations/${encodeURIComponent(newConversationId)}`);
-      }
     }
+    const conversationRoute = `/ask/conversations/${encodeURIComponent(newConversationId)}`;
+    if (location.pathname !== conversationRoute) navigate(conversationRoute);
   };
 
   const submissionFromOutcome = async (
@@ -1165,9 +1195,15 @@ export const AskShellGlobalComposer = () => {
   );
 };
 
-export const AskShellConversationPane = () => {
+export const AskShellConversationPane = ({
+  showConversationList = true,
+}: {
+  readonly showConversationList?: boolean;
+}) => {
   const {
     workspace,
+    activeConversationId,
+    error,
     runOverrides,
     runEvents,
     answerRunMutationPending,
@@ -1188,9 +1224,19 @@ export const AskShellConversationPane = () => {
   } = useAskShell();
   const { t } = useProductLocalization();
 
+  // The center owns the workspace failure. Do not repeat it in the conversation.
+  if (error) return null;
+  if (
+    activeConversationId &&
+    workspace?.selectedConversation?.conversationId !== activeConversationId
+  ) {
+    return <LoadingState message={t('ask.loading_workspace')} />;
+  }
+
   return (
     <>
       <ConversationPane
+        showConversationList={showConversationList}
         workspace={workspace}
         runOverrides={runOverrides}
         runEvents={runEvents}
@@ -1253,13 +1299,25 @@ export const AskCenterWorkspace = () => {
     mode && mode !== 'CANONICAL_ONLY' && mode !== 'AUTO_PROJECT_KNOWLEDGE',
   );
   const showEmptyLanding = !activeConversationId && !hasVisibleSupportControls;
+  const conversationLayout = isConversationLayoutEnabled(shell);
 
   return (
     <section className="route-page hfm-route-page ask-workspace">
-      <p className="eyebrow">{t('ask.eyebrow')}</p>
-      <h1 tabIndex={-1}>{t('ask.title')}</h1>
+      {!conversationLayout ? <p className="eyebrow">{t('ask.eyebrow')}</p> : null}
+      <h1
+        tabIndex={-1}
+        className={conversationLayout && activeConversationId ? 'visually-hidden' : undefined}
+      >
+        {conversationLayout
+          ? activeConversationId
+            ? t('ask.conversations')
+            : t('layout.welcome')
+          : t('ask.title')}
+      </h1>
       {showEmptyLanding ? (
-        <p className="ask-empty-landing-hint">{t('ask.empty_landing_hint')}</p>
+        <p className="ask-empty-landing-hint">
+          {t(conversationLayout ? 'layout.empty_landing_hint' : 'ask.empty_landing_hint')}
+        </p>
       ) : null}
       <AskSupportControls
         mode={mode}
@@ -1292,5 +1350,18 @@ export const AskWorkspace = (props: {
       <AskShellConversationPane />
       <AskShellGlobalComposer />
     </AskShellProvider>
+  );
+};
+
+/** Mounted only inside the authorized Ask route; failed loaders render no answer. */
+export const AskConversationWorkspace = () => {
+  const { shell } = useAskShell();
+  return (
+    <>
+      <AskCenterWorkspace />
+      {isConversationLayoutEnabled(shell) ? (
+        <AskShellConversationPane showConversationList={false} />
+      ) : null}
+    </>
   );
 };

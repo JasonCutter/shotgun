@@ -1,32 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
-import { Outlet } from 'react-router';
 
 import type { GlobalShellView } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
-import { RouteFocus } from '../app/route-focus.js';
 import { AnswerCommandContextProvider } from '../commands/answer-command-context.js';
 import { DiscoveryCommandContextProvider } from '../commands/discovery-command-context.js';
-import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { SkipLink } from '../components/skip-link.js';
 import { TechnicalInspectionProvider } from '../components/technical-inspection-context.js';
-import {
-  ProductLocalizationProvider,
-  useProductLocalization,
-} from '../localization/product-localization.js';
+import { ProductLocalizationProvider } from '../localization/product-localization.js';
 import { GlobalTools, OwnerCommandControllerProvider } from '../section3/global-tools.js';
 import { globalShellQueryOptions } from '../section3/section3-queries.js';
-import {
-  AskShellConversationPane,
-  AskShellGlobalComposer,
-  AskShellProvider,
-} from '../routes/ask-workspace.js';
+import { AskShellProvider } from '../routes/ask-workspace.js';
 import { SessionBoundaryScreen } from '../session/session-boundary-screen.js';
 import { reconnectSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
-import { InstrumentPanel } from './instrument-panel.js';
-import { PrimaryNavigation } from './primary-navigation.js';
+import { ConversationShell } from './conversation-shell.js';
+import { LegacyShell } from './legacy-shell.js';
+import { isConversationLayoutEnabled } from './conversation-layout.js';
 import { useConnectivityState } from './use-connectivity-state.js';
 
 export const ApplicationShell = () => {
@@ -124,91 +115,28 @@ const LocalizedApplicationShell = ({
   readonly shell: GlobalShellView;
   readonly offline: boolean;
 }) => {
-  const { t } = useProductLocalization();
   return (
     <AnswerCommandContextProvider>
       <DiscoveryCommandContextProvider>
         <TechnicalInspectionProvider>
           <GlobalTools shell={shell}>
-            {(controller) => {
-              const commandMode = controller.commandMode ?? {
-                open: false,
-                initialQuery: '',
-                resetQuerySignal: 0,
-                invoker: null,
-              };
-              return (
-                <OwnerCommandControllerProvider controller={controller}>
-                  <AskShellProvider shell={shell}>
-                    <div className="application-shell">
-                      <SkipLink />
-                      <div className="pc-global-shell">
-                        <div
-                          className="pc-global-shell__instrument"
-                          data-global-shell-region="instrument"
-                        >
-                          <InstrumentPanel shell={shell} controller={controller} />
-                        </div>
-                        {offline ? (
-                          <div className="global-banner global-banner-critical" role="alert">
-                            {t('shell.offline')}
-                          </div>
-                        ) : shell.leadingWarning ? (
-                          <div
-                            className={`global-banner global-banner-${shell.leadingWarning.severity.toLowerCase()}`}
-                            role={shell.leadingWarning.severity === 'CRITICAL' ? 'alert' : 'status'}
-                          >
-                            {shell.leadingWarning.message}
-                            {shell.leadingWarning.additionalCount > 0
-                              ? ` (${shell.leadingWarning.additionalCount} ${t('shell.additional_states')})`
-                              : ''}
-                          </div>
-                        ) : null}
-                        <div className="pc-global-shell__tree" data-global-shell-region="tree">
-                          <PrimaryNavigation
-                            navigation={shell.navigation}
-                            controller={controller}
-                          />
-                        </div>
-                        <main
-                          id="main-content"
-                          className="pc-global-shell__center"
-                          data-global-shell-region="center"
-                          tabIndex={-1}
-                        >
-                          <RouteFocus />
-                          <Outlet context={{ shell }} />
-                          <OwnerCommandPalette
-                            open={commandMode.open}
-                            presentation="CENTER"
-                            commands={controller.commands}
-                            initialQuery={commandMode.initialQuery}
-                            resetQuerySignal={commandMode.resetQuerySignal}
-                            invoker={commandMode.invoker}
-                            onClose={controller.closeCommandMode ?? (() => undefined)}
-                            onSelect={(command) =>
-                              controller.executeCommand(command, commandMode.invoker)
-                            }
-                          />
-                        </main>
-                        <div
-                          className="pc-global-shell__conversation"
-                          data-global-shell-region="conversation"
-                        >
-                          <AskShellConversationPane />
-                        </div>
-                        <div
-                          className="pc-global-shell__composer"
-                          data-global-shell-region="composer"
-                        >
-                          <AskShellGlobalComposer />
-                        </div>
-                      </div>
-                    </div>
-                  </AskShellProvider>
-                </OwnerCommandControllerProvider>
-              );
-            }}
+            {(controller) => (
+              <OwnerCommandControllerProvider controller={controller}>
+                <AskShellProvider
+                  key={`${shell.principalId}:${shell.sessionId}:${shell.activeProject?.id}:${shell.accessRevision}`}
+                  shell={shell}
+                >
+                  <div className="application-shell">
+                    <SkipLink />
+                    {isConversationLayoutEnabled(shell) ? (
+                      <ConversationShell shell={shell} controller={controller} offline={offline} />
+                    ) : (
+                      <LegacyShell shell={shell} controller={controller} offline={offline} />
+                    )}
+                  </div>
+                </AskShellProvider>
+              </OwnerCommandControllerProvider>
+            )}
           </GlobalTools>
         </TechnicalInspectionProvider>
       </DiscoveryCommandContextProvider>

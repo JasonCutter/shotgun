@@ -2,12 +2,15 @@ import {
   createBrowserRouter,
   useRouteError,
   useRevalidator,
+  useOutletContext,
   type LoaderFunctionArgs,
 } from 'react-router';
 
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { ApplicationShell } from '../shell/application-shell.js';
+import { isConversationLayoutEnabled } from '../shell/conversation-layout.js';
+import { globalShellQueryOptions } from '../section3/section3-queries.js';
 import { HomePage } from '../routes/home-page.js';
 import { SettingsLayout } from '../routes/settings/settings-layout.js';
 import { CategoryIndexView } from '../routes/settings/category-index-view.js';
@@ -17,7 +20,7 @@ import { PreferencesWorkspace } from '../routes/settings/preferences-workspace.j
 import { ProjectsWorkspace } from '../routes/settings/projects-workspace.js';
 import { SourcesWorkspace } from '../routes/sources-workspace.js';
 import { SourceDetailWorkspace } from '../routes/source-detail-workspace.js';
-import { AskWorkspace } from '../routes/ask-workspace.js';
+import { AskConversationWorkspace } from '../routes/ask-workspace.js';
 import { KnowledgeWorkspace } from '../routes/knowledge-workspace.js';
 import { KnowledgeDetailWorkspace } from '../routes/knowledge-detail-workspace.js';
 import { KnowledgeCompareWorkspace } from '../routes/knowledge-compare-workspace.js';
@@ -33,7 +36,12 @@ import { HistoryWorkspace } from '../routes/history-workspace.js';
 import type { AppRuntime } from './providers.js';
 import { ensureSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import { productSessionQueryKey, sessionBoundaryQueryKey } from './query-keys.js';
-import type { ProductSessionView, SessionBoundaryView, TargetRouteView } from '@shotgun/api-client';
+import type {
+  GlobalShellView,
+  ProductSessionView,
+  SessionBoundaryView,
+  TargetRouteView,
+} from '@shotgun/api-client';
 
 const RouteError = () => {
   const error = useRouteError();
@@ -133,6 +141,22 @@ const guardedRouteLoader =
     return decision;
   };
 
+const LandingWorkspace = () => {
+  const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
+  return isConversationLayoutEnabled(shell) ? <AskConversationWorkspace /> : <HomePage />;
+};
+
+const landingRouteLoader = (runtime: AppRuntime) => async (args: LoaderFunctionArgs) => {
+  const boundary = await sessionLoader(runtime)(args);
+  if (boundary.sessionState !== 'READY' || !boundary.session) return null;
+  const shell = await runtime.queryClient.fetchQuery(
+    globalShellQueryOptions(runtime.apiClient, boundary.session),
+  );
+  return isConversationLayoutEnabled(shell)
+    ? guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' })(args)
+    : null;
+};
+
 export const createAppRouteObjects = (runtime: AppRuntime) => [
   {
     path: '/',
@@ -141,7 +165,17 @@ export const createAppRouteObjects = (runtime: AppRuntime) => [
     hydrateFallbackElement: <LoadingState message="Session 확인 중" />,
     errorElement: <RouteError />,
     children: [
-      { index: true, element: <HomePage /> },
+      {
+        index: true,
+        loader: landingRouteLoader(runtime),
+        element: <LandingWorkspace />,
+      },
+      {
+        path: 'home',
+        loader: guardedRouteLoader(runtime, { routeId: 'home', href: '/' }),
+        element: <HomePage />,
+        errorElement: <RouteError />,
+      },
       {
         path: 'sources',
         loader: guardedRouteLoader(runtime, { routeId: 'sources', href: '/sources' }),
@@ -157,13 +191,13 @@ export const createAppRouteObjects = (runtime: AppRuntime) => [
       {
         path: 'ask',
         loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
-        element: <AskWorkspace />,
+        element: <AskConversationWorkspace />,
         errorElement: <RouteError />,
       },
       {
         path: 'ask/conversations/:conversationId',
         loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
-        element: <AskWorkspace />,
+        element: <AskConversationWorkspace />,
         errorElement: <RouteError />,
       },
       {

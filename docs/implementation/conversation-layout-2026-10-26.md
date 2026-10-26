@@ -216,6 +216,11 @@ pinned Evidence, route-denial negatives, keyboard, long-scroll return and
 TypeScript and production build pass; only previously recorded crypto/chunk
 notices remain. All 409 frontend unit tests (50 files), changed-file lint/format,
 architecture, documentation and OSS gates pass. Required CI gates run before merge.
+The first full frontend CI run passed 90 cases but exposed a viewport assumption
+in the design-width assertion: the isolated config starts at 1440px while the
+full config starts at 1280px (the new inset layout correctly leaves a 980px main
+pane there). That assertion now explicitly selects its intended 1440px viewport;
+the independent 1280/1920px overflow coverage is retained. No assertion is removed.
 Golden Corpus, adapter replacement, replay and migration drills are N/A: no
 data, event, adapter or processing contract changed. No live AI is invoked.
 

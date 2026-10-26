@@ -126,8 +126,10 @@ verification are now authorized; their results will be recorded after execution.
 
 Release regression inspection found that the historical approved-knowledge
 product's browser tests still exercise ADR-146's original shell. The new layout
-is selected by the existing server-owned `vp-autonomous-knowledge` capability.
+is selected by the existing server-owned `vp-conversation-layout` presentation capability.
 The VP landing route remains Ask-guarded. The historical product retains the
 existing Home/Tree/Instrument/Conversation shell and its protected routes. This
 reuses the original components rather than rewriting legacy behavior. The new
 browser flow starts at `/` to prove the actual VP desktop landing experience.
+
+The read projection advertises `vp-conversation-layout` only when the existing automatic-knowledge composition is active. The older `vp-autonomous-knowledge` capability describes supported knowledge functionality and is not reused as a presentation-mode selector. No backend processing or permission policy changes. The shell contract tests cover active, legacy and no-project cases.

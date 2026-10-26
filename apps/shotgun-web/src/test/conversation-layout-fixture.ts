@@ -44,6 +44,7 @@ export const layoutShell: GlobalShellView = {
     },
   ],
   features: [
+    { id: 'vp-conversation-layout', label: 'Conversation UI', availability: 'AVAILABLE' },
     { id: 'vp-autonomous-knowledge', label: 'VP', availability: 'AVAILABLE' },
     { id: 'global-search', label: 'Search', availability: 'AVAILABLE' },
     { id: 'command-palette', label: 'Commands', availability: 'AVAILABLE' },

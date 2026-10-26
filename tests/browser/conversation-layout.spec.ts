@@ -169,6 +169,8 @@ const installFixture = async (page: Page, denySources = false, denyAsk = false) 
 test('conversation, drafts, pins, guarded evidence, keyboard and desktop layout', async ({
   page,
 }, testInfo) => {
+  // The reading-column assertion below targets the 1440px design in both configs.
+  await page.setViewportSize({ width: 1440, height: 1000 });
   const fixture = await installFixture(page);
   await page.goto('/');
   await expect(page.getByRole('heading', { name: '무엇이 궁금하신가요?' })).toBeVisible();

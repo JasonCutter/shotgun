@@ -117,6 +117,7 @@ export const GlobalComposer = ({
         title={t('layout.add_source')}
       >
         <span aria-hidden="true">+</span>
+        <span className="composer-add-source-label">{t('layout.add_source')}</span>
       </Link>
       <label className="visually-hidden" htmlFor="global-ask-mode">
         {t('ask.mode')}

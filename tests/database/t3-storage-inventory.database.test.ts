@@ -31,7 +31,7 @@ describe('T3 storage classification coverage', () => {
     );
     const expected = parseT3ExpectedTables(register);
     expect(expected.schemas).toEqual([...managedSchemas].sort());
-    expect(expected.tables).toHaveLength(212);
+    expect(expected.tables).toHaveLength(246);
     const currentAdditions = [
       'ai.image_observation_executions',
       'source_product.url_refresh_jobs',
@@ -42,7 +42,15 @@ describe('T3 storage classification coverage', () => {
     expect(expected.tables.filter((table) => currentAdditions.includes(table))).toEqual(
       currentAdditions,
     );
-    expect(expected.tables.filter((table) => !currentAdditions.includes(table))).toHaveLength(207);
+    const surferTables = expected.tables.filter((table) =>
+      /^(?:surfer_|provider_account\.|frontend_ask\.surfer_)/u.test(table),
+    );
+    expect(surferTables).toHaveLength(34);
+    expect(
+      expected.tables.filter(
+        (table) => !currentAdditions.includes(table) && !surferTables.includes(table),
+      ),
+    ).toHaveLength(207);
     expect(register).toContain('migration 001–130의 207개 table');
     expect(register).toContain('`source_product.url_refresh_jobs`: D');
     expect(register).toContain('`vp.candidate_frontiers`와 `vp.candidate_frontier_members`: D+B');
@@ -64,7 +72,7 @@ describe('T3 storage classification coverage', () => {
   it('matches every JSON, JSONB, and bytea column against the exact inventory', async () => {
     const inventory = await readFile('docs/implementation/t3-content-column-inventory.tsv', 'utf8');
     const expected = parseT3ExpectedContentColumns(inventory);
-    expect(expected).toHaveLength(174);
+    expect(expected).toHaveLength(207);
     expect(
       expected.filter(
         (column) =>

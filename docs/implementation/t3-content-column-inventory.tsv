@@ -1,4 +1,4 @@
-# Current T3 content-column inventory; isolated migration 001–138; 2026-10-14
+# Current T3 content-column inventory; isolated migration 001–174; 2026-11-13
 # Historical header: shotgun_test migration 077; 2026-09-23; previous 168 rows retained
 # column<TAB>postgres_type
 action.action_feedback_outbox.payload_json	jsonb
@@ -69,6 +69,8 @@ evidence.stage4_continuations.evidence_snapshot	jsonb
 frontend_activity.activity_index.snapshot	jsonb
 frontend_ask.answer_run_attempts.generated_image_context	jsonb
 frontend_ask.statements.generated_observation_references	jsonb
+frontend_ask.surfer_meaning_proposals.receipt	jsonb
+frontend_ask.surfer_memory_context.context	jsonb
 frontend_ask.transition_seeds.payload	jsonb
 frontend_command.command_ledger.accepted_policy_context	jsonb
 frontend_command.command_ledger.accepted_principal_context	jsonb
@@ -138,6 +140,18 @@ project_audit.deleted_project_audit_scopes.granted_principal_ids	jsonb
 projection.compiled_truth.projection	jsonb
 projection.discovery_inferences.candidate	jsonb
 projection.semantic_items.provenance	jsonb
+provider_account.bootstrap_commands.receipt	jsonb
+provider_account.bootstrap_commands.request	jsonb
+provider_account.grants.binding	jsonb
+provider_account.grants.profile_snapshot	jsonb
+provider_account.grants.usage	jsonb
+provider_account.registration_commands.receipt	jsonb
+provider_account.registration_commands.request	jsonb
+provider_account.registrations.profile	jsonb
+provider_account.retained_unknown_grants.grant_snapshot	jsonb
+provider_account.root_renewal_commands.receipt	jsonb
+provider_account.root_renewal_commands.request	jsonb
+provider_account.roots.policy	jsonb
 review.approved_manifests_v2.manifest_json	jsonb
 review.change_set_revisions_v2.change_set_json	jsonb
 review.change_sets.change_set_json	jsonb
@@ -170,6 +184,25 @@ source_product.intake_submissions.accepted_policy_binding	jsonb
 source_product.url_provenance_receipts.dns_observations	jsonb
 source_product.url_provenance_receipts.redirect_observations	jsonb
 source_product.url_provenance_receipts.response_metadata	jsonb
+surfer_execution.budget_state.payload	jsonb
+surfer_execution.semantic_runs.payload	jsonb
+surfer_history.generation.manifest	jsonb
+surfer_history.record.payload	jsonb
+surfer_intake.job.prepared	jsonb
+surfer_intake.job.receipt	jsonb
+surfer_intake.transition.payload	jsonb
+surfer_knowledge.source_binding_v2.payload	jsonb
+surfer_knowledge.space_state.payload	jsonb
+surfer_meaning.job.result	jsonb
+surfer_meaning.job.work	jsonb
+surfer_meaning.transition.payload	jsonb
+surfer_rows.migration.manifest	jsonb
+surfer_rows.record.payload	jsonb
+surfer_rows.source_binding.payload	jsonb
+surfer_rows.source_capture.payload	jsonb
+surfer_rows.space.payload	jsonb
+surfer_rows.stage.archive_record	jsonb
+surfer_rows.stage.target_payload	jsonb
 transformation.revisions.document_ir	jsonb
 transformation.revisions.source_map	jsonb
 validation.results.dimensions	jsonb

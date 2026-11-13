@@ -8,11 +8,11 @@ import type {
   KnowledgeResetImpactPort,
 } from '../../../modules/source-knowledge-reset/src/index.js';
 
-const EXPECTED_TABLE_COUNT = 208;
-const EXPECTED_TABLE_DIGEST = '57e56ff5d367b34063fbf5aa696c87aa2254835959b193113f095e907ab5a809';
-const EXPECTED_CONTENT_COLUMN_COUNT = 174;
+const EXPECTED_TABLE_COUNT = 229;
+const EXPECTED_TABLE_DIGEST = '3bd5fe62b3d2da1fdbcd8d1c2fccb94cef76d552da56a38e9df0a39dde5fee08';
+const EXPECTED_CONTENT_COLUMN_COUNT = 195;
 const EXPECTED_CONTENT_COLUMN_DIGEST =
-  '74d686c2d94777dfe5a968405156c86679617e049504b0bb5ceea07a9320cdaa';
+  '2397f9eaf6ebad913726d0358ee87b8916ea021b489aa6b12e0ea07f79d68068';
 
 type ScopeRow = Readonly<{
   schema_name: string;
@@ -133,6 +133,8 @@ type SettingsSnapshot = Readonly<{
 const OWNER_CLASSIFIED_TABLES = new Set([
   'knowledge.review_groups',
   'knowledge.entity_vault_imports',
+  'frontend_ask.surfer_memory_context',
+  'frontend_ask.surfer_meaning_proposals',
 ]);
 
 const OWNER_CLASSIFIED_SCHEMAS = new Set([
@@ -142,6 +144,12 @@ const OWNER_CLASSIFIED_SCHEMAS = new Set([
   'projection',
   'review',
   'settings',
+  'surfer_execution',
+  'surfer_history',
+  'surfer_intake',
+  'surfer_knowledge',
+  'surfer_meaning',
+  'surfer_rows',
 ]);
 
 const MANAGED_SCHEMAS = new Set([
@@ -175,6 +183,12 @@ const MANAGED_SCHEMAS = new Set([
   'transformation',
   'validation',
   'vp',
+  'surfer_execution',
+  'surfer_history',
+  'surfer_intake',
+  'surfer_knowledge',
+  'surfer_meaning',
+  'surfer_rows',
 ]);
 
 const SOURCE_DERIVED_SCHEMAS = new Set([
@@ -1189,6 +1203,13 @@ export class PostgresKnowledgeResetImpactInspector implements KnowledgeResetImpa
         ORDER BY namespace.nspname, relation.relname`,
       [[...MANAGED_SCHEMAS].sort()],
     );
+    const surfer = await this.pool.query<{ has_content: boolean }>(
+      'SELECT frontend_ask.t3_has_surfer_reset_content($1) AS has_content',
+      [projectId],
+    );
+    const surferBlocked = surfer.rows[0]?.has_content !== false;
+    if (surferBlocked) blockers.add('UNCLASSIFIED_CONTENT');
+
     const scopedSnapshots: ScopeSnapshot[] = [];
     for (const relation of projectIdRelations.rows) {
       if (RESET_CONTROL_TABLES.has(`${relation.schema_name}.${relation.table_name}`)) continue;
@@ -1360,6 +1381,7 @@ export class PostgresKnowledgeResetImpactInspector implements KnowledgeResetImpa
       rebuildProjectionCount,
       sharedAssetCount: assets.sharedAssetCount,
       blockedRecordCount:
+        Number(surferBlocked) +
         scopedSnapshots
           .filter((snapshot) => snapshot.classification === 'CONDITIONAL')
           .reduce((count, snapshot) => count + snapshot.rowCount, 0) +

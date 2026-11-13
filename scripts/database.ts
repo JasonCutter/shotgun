@@ -40,6 +40,13 @@ const migrationFiles = async (): Promise<string[]> =>
   (await readdir(migrationDirectory)).filter((file) => file.endsWith('.sql')).sort();
 
 export const managedSchemas = [
+  'surfer_meaning',
+  'surfer_intake',
+  'surfer_rows',
+  'surfer_history',
+  'surfer_knowledge',
+  'surfer_execution',
+  'provider_account',
   'frontend_ask',
   'frontend_knowledge_draft',
   'frontend_knowledge_graph',

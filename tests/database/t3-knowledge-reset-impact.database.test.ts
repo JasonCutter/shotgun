@@ -105,6 +105,49 @@ describe('ADR-171 PostgreSQL Source knowledge impact inspection', () => {
     }
   });
 
+  it('blocks retained Surfer content for its project while leaving unrelated projects available', async () => {
+    const database = await createIsolatedPostgresTestDatabase();
+    const pool = database.createPool();
+    const projectId = 't3-surfer-' + randomUUID();
+    const otherProjectId = 't3-other-' + randomUUID();
+    const marker = 'surfer-content-' + randomUUID();
+    try {
+      await pool.query(
+        `INSERT INTO surfer_knowledge.space_state (space_id,revision,payload,digest)
+         VALUES ($1,0,jsonb_build_object('spaceId',$1::text,'sequence',0,
+           'schemaVersion','1.0.0','marker',$2::text),$3)`,
+        [projectId, marker, 'sha256:' + 'a'.repeat(64)],
+      );
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SET LOCAL ROLE shotgun_runtime');
+        const checks = await client.query(
+          `SELECT frontend_ask.t3_has_surfer_reset_content($1) AS blocked,
+                  frontend_ask.t3_has_surfer_reset_content($2) AS independent,
+                  has_table_privilege((SELECT oid FROM pg_class WHERE relname = 'generation'
+                    AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'surfer_history')),
+                    'SELECT') AS can_read_history`,
+          [projectId, otherProjectId],
+        );
+        expect(checks.rows).toEqual([
+          { blocked: true, independent: false, can_read_history: false },
+        ]);
+      } finally {
+        await client.query('ROLLBACK');
+        client.release();
+      }
+      const inspector = new PostgresKnowledgeResetImpactInspector(pool, true);
+      const impact = await inspector.inspectProjectSourceKnowledge(projectId);
+      expect(impact.blockers).toContain('UNCLASSIFIED_CONTENT');
+      expect(impact.counts.blockedRecordCount).toBeGreaterThanOrEqual(1);
+      expect(JSON.stringify(impact)).not.toContain(marker);
+      expect((await inspector.inspectProjectSourceKnowledge(otherProjectId)).blockers).toEqual([]);
+    } finally {
+      await database.dispose();
+    }
+  }, 15_000);
+
   it('blocks Project audit tombstones that can retain unclassified free text', async () => {
     const database = await createIsolatedPostgresTestDatabase();
     const pool = database.createPool();

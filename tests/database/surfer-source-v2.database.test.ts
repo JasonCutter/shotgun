@@ -45,7 +45,8 @@ describe.skipIf(!target)('Surfer source-binding v2 actual PostgreSQL', () => {
       statement_timeout: 10000,
     });
     const migrations = await migrateSurferSourceDatabase(pool);
-    expect(migrations.at(-1)).toBe('173_surfer_meaning_review_prompt_v12.sql');
+    expect(migrations).toContain('173_surfer_meaning_review_prompt_v12.sql');
+    expect(migrations.at(-1)).toBe('174_surfer_t3_reset_preflight.sql');
     await mkdir('.data/surfer-source-v2', { recursive: true });
     await writeFile(
       '.data/surfer-source-v2/schema.json',

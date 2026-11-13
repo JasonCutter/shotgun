@@ -96,7 +96,10 @@ jobs:
       - name: Run CI test suite
         run: npm run test:ci
       - name: Install PostgreSQL client tools
-        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client-16
+          printf '%s\n' /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
       - name: Run database tests
         run: npm run test:database
 

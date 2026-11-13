@@ -1,6 +1,10 @@
 # VP 전체 완료 Master Execution Plan
 
-> **IN_PROGRESS — NOT_IMPLEMENTATION_COMPLETE / NOT_FINAL_ACCEPTANCE_COMPLETE**
+> **현재: VP_FINAL_ACCEPTANCE_COMPLETE — Shotgun V1.0 (2026-10-20 사용자 명명 결정).**
+>
+> 최종 증거 PR #395의 main 병합 및 사후 CI로 게시 종결 조건을 충족했다.
+> [완료·버전 기준과 검증 근거](../releases/v1.0.0.md)를 따른다. 새 버전 게시/배포와
+> 의미 정확도 인증은 구분한다. 아래 초기 계획·날짜별 미완료 표시는 당시 이력이다.
 
 > 2026-10-18 현재 종료 대조는 [최종 증거 매트릭스](./final-closure-2026-10-18.md)를
 > 따른다. 위 최초 상태와 아래 날짜별 미실행/HOLD는 이력으로 보존한다. 현재

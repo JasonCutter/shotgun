@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
@@ -5,6 +6,17 @@ const backendTarget = process.env.VITE_BACKEND_TARGET ?? 'http://127.0.0.1:3000'
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    // A managed worktree can share node_modules with a different checkout.
+    alias: [
+      {
+        find: /^@shotgun\/api-client$/,
+        replacement: fileURLToPath(
+          new URL('../../packages/shotgun-api-client/src/index.ts', import.meta.url),
+        ),
+      },
+    ],
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,

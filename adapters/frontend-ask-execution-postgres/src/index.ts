@@ -1,3 +1,4 @@
+import type { SurferAskMeaningProposalReceipt } from '../../../packages/contracts/src/surfer-ask-discovery.js';
 import { randomUUID } from 'node:crypto';
 
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
@@ -412,6 +413,18 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     private readonly hybridRetrieval?: HybridRetrievalCoordinatorPort,
     private readonly vpEvidenceSearch?: AskKnowledgeEvidenceSearchPort,
     private readonly imageObservations?: Pick<VPImageObservationLedgerPort, 'findHistorical'>,
+    private readonly memoryPublicationGuard?: (
+      client: PoolClient,
+      input: {
+        scope: AskExecutionScope;
+        answerRunId: string;
+        attemptId: string;
+        workerId: string;
+        resolvedContextDigest?: string;
+        meaningProposal?: SurferAskMeaningProposalReceipt;
+        provider?: AskAnswerRunProvider;
+      },
+    ) => Promise<void>,
   ) {}
 
   async isProjectKnowledgePending(
@@ -1630,6 +1643,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   }
 
   async complete(input: {
+    readonly meaningProposal?: SurferAskMeaningProposalReceipt;
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly attemptNumber: number;
@@ -1660,6 +1674,15 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         }))
       )
         return;
+      await this.memoryPublicationGuard?.(client, {
+        scope: input.scope,
+        answerRunId: input.answerRunId,
+        attemptId,
+        workerId: input.workerId,
+        resolvedContextDigest: input.resolvedContextDigest,
+        meaningProposal: input.meaningProposal,
+        provider: input.provider,
+      });
       if (
         input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP4 ||
         input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP5 ||

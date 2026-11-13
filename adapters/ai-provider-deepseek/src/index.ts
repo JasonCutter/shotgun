@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { observeSurferTransportFailure } from './transport-diagnostic.js';
+import type { SurferTransportDiagnostic } from '../../../packages/contracts/src/surfer-runtime-controls.js';
 import type { AIProviderConnectivityAdapter } from '../../../modules/ai-settings-backend/src/index.js';
 import {
   DEFAULT_CANDIDATE_EXTRACTION_TIMEOUT_MS,
@@ -69,6 +71,11 @@ export type DeepSeekConnectivityAdapterOptions = {
   readonly generationTimeoutMs?: number;
   readonly temperature?: number;
   readonly fetch?: FetchLike;
+  /** Synchronous secret-free observation only; cannot change retry/egress authority. */
+  readonly onTransportDiagnostic?: (diagnostic: SurferTransportDiagnostic) => void;
+  /** CALLER preserves text/usage for a durable owner codec to validate after checkpointing.
+   * Default ADAPTER retains the established JSON-object rejection behavior. */
+  readonly structuredContentValidation?: 'ADAPTER' | 'CALLER';
 };
 
 /** Prepared transport only. Pins must come from an authorized immutable asset
@@ -157,6 +164,8 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
   private readonly generationTimeoutMs: number;
   private readonly temperature: number;
   private readonly fetch: FetchLike;
+  private readonly onTransportDiagnostic?: (diagnostic: SurferTransportDiagnostic) => void;
+  private readonly structuredContentValidation: 'ADAPTER' | 'CALLER';
 
   constructor(options: DeepSeekConnectivityAdapterOptions = {}) {
     const baseUrl = new URL(options.baseUrl?.trim() || 'https://api.deepseek.com');
@@ -178,8 +187,12 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
       throw new Error('DeepSeek generation temperature must be between 0 and 2.');
     }
     this.temperature = temperature;
-    this.adapterVersion = `deepseek-chat-completions-v2-temperature-${temperature}`;
+    this.structuredContentValidation = options.structuredContentValidation ?? 'ADAPTER';
+    if (!['ADAPTER', 'CALLER'].includes(this.structuredContentValidation))
+      throw new Error('Unknown structured content validation owner.');
+    this.adapterVersion = `deepseek-chat-completions-v2-temperature-${temperature}${this.structuredContentValidation === 'CALLER' ? '-caller-json-v1' : ''}`;
     this.fetch = options.fetch ?? globalThis.fetch;
+    this.onTransportDiagnostic = options.onTransportDiagnostic;
   }
 
   async testConnection(input: Parameters<AIProviderConnectivityAdapter['testConnection']>[0]) {
@@ -230,7 +243,11 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
       this.generationTimeoutMs,
       true,
     );
-    return this.structuredResult(response, input.modelId);
+    return this.structuredResult(
+      response,
+      input.modelId,
+      this.structuredContentValidation === 'ADAPTER',
+    );
   }
 
   /** Existing deepseek-flash native transport. No external URL/Files API,
@@ -310,13 +327,15 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
   private structuredResult(
     response: DeepSeekResponse,
     modelId: string,
+    validateContent = true,
   ): StructuredGenerationResponse {
     const rawText = this.outputText(response);
-    parseObject(rawText);
+    if (validateContent) parseObject(rawText);
     return {
       rawText,
       ...(typeof response.id === 'string' ? { providerResponseId: response.id } : {}),
-      modelVersion: typeof response.model === 'string' ? response.model : modelId,
+      modelVersion:
+        typeof response.model === 'string' ? response.model : validateContent ? modelId : undefined,
       ...(numberOrUndefined(response.usage?.prompt_tokens) === undefined
         ? {}
         : { inputTokens: numberOrUndefined(response.usage?.prompt_tokens) }),
@@ -358,7 +377,13 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
         cause,
       });
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let timedOut = false;
+    let phase: 'HEADERS' | 'BODY' = 'HEADERS';
+    let responseStatus: number | null = null;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
     timeout.unref();
     const abort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', abort, { once: true });
@@ -369,6 +394,8 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
         body: JSON.stringify(body),
         signal: controller.signal,
       });
+      phase = 'BODY';
+      responseStatus = response.status;
       if (!response.ok) throw mapStatus(response.status);
       try {
         return (await response.json()) as DeepSeekResponse;
@@ -388,6 +415,19 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
         throw errorFor('VALIDATION_ERROR', 'DeepSeek returned an invalid response.', error);
       }
     } catch (error) {
+      try {
+        const observerResult: unknown = this.onTransportDiagnostic?.(
+          observeSurferTransportFailure(error, {
+            phase,
+            status: responseStatus,
+            timedOut,
+            aborted: controller.signal.aborted,
+          }),
+        );
+        if (observerResult instanceof Promise) void observerResult.catch(() => {});
+      } catch {
+        /* An observer must not hide the original transport outcome. */
+      }
       if (error instanceof ShotgunError) throw error;
       if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
         if (generation) throw missingResponse(error);

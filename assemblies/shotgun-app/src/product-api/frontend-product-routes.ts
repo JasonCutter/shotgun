@@ -60,12 +60,15 @@ import {
 } from '../../../../packages/contracts/src/index.js';
 import type { SecurityHeaders } from '../server.js';
 
+import type { SurferMeaningAskSession } from '../surfer-meaning-launch.js';
+
 type PrincipalSessionResolver = (
   headers: Record<string, string | string[] | undefined>,
 ) => Promise<{
   principalContext: { principalId: string };
   context?: { principalId: string; projectId: string };
-  session: { sessionId: string; activeProjectId: string | null };
+  sessionToken?: string;
+  session: { sessionId: string; activeProjectId: string | null; expiresAt?: string };
 }>;
 
 export const registerFrontendProductRoutes = (
@@ -77,6 +80,7 @@ export const registerFrontendProductRoutes = (
   requirePrincipalBrowserSession: PrincipalSessionResolver,
   options?: {
     readonly askCommandCoordinator?: AskCommandCoordinator;
+    readonly onSurferMeaningAsk?: (session: SurferMeaningAskSession) => void;
     readonly askAnswerExecution?: AskAnswerExecutionService;
     readonly frontendCommandGateway?: FrontendCommandGatewayPort;
     readonly discoveryFeedbackProductCoordinator?: DiscoveryFeedbackProductCoordinator;
@@ -1479,6 +1483,25 @@ export const registerFrontendProductRoutes = (
         request: decodedRequest,
       });
     });
+    if (options?.onSurferMeaningAsk && scope.value.activeProject?.isOwner) {
+      const current = await requirePrincipalBrowserSession(request.headers).catch(() => undefined);
+      const run = projection.value.answerRun;
+      if (
+        current?.sessionToken &&
+        current.session.expiresAt &&
+        current.principalContext.principalId === scope.value.principalId &&
+        current.session.sessionId === scope.value.sessionId &&
+        current.context?.projectId === run.projectId &&
+        scope.value.activeProject.id === run.projectId
+      )
+        options.onSurferMeaningAsk({
+          projectId: run.projectId,
+          principalId: scope.value.principalId,
+          sessionToken: current.sessionToken,
+          expiresAt: current.session.expiresAt,
+          questionCreatedAt: run.createdAt,
+        });
+    }
     reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
     return { submission: projection.value };
   });

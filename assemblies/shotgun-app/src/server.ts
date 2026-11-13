@@ -1,3 +1,6 @@
+import { registerSurferRoutes } from './product-api/surfer-routes.js';
+import type { SurferMeaningAskSession } from './surfer-meaning-launch.js';
+import type { SurferApplicationReadPort } from '../../../packages/contracts/src/surfer-application.js';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -780,6 +783,7 @@ export type SecurityHeaders = {
 };
 
 export type ApplicationOptions = {
+  readonly surferRuntime?: SurferApplicationReadPort;
   /** Shared application-owned cleanup authority supplied by the composition. */
   readonly cleanupStack?: AsyncCleanupStack;
   readonly transport?: MessageTransport;
@@ -890,6 +894,7 @@ export type ApplicationOptions = {
     sources: FrontendSourcesReadCoordinator,
   ) => FrontendProductReadCoordinator;
   readonly askCommandCoordinator?: AskCommandCoordinator;
+  readonly onSurferMeaningAsk?: (session: SurferMeaningAskSession) => void;
   readonly askAnswerExecution?: AskAnswerExecutionService;
   readonly sourcesProjectionRepository?: SourcesProjectionRepositoryPort;
   readonly sourcesImageRead?: SourcesImageReadOptions;
@@ -3163,6 +3168,8 @@ const createApplicationCore = async (
   setServerForStartupCleanup(server);
 
   const httpSchemaValidationRoutes = new Set([
+    '/api/v1/surfer/intake/status',
+    '/api/v1/surfer/intake/resume',
     '/auth/login',
     '/intake',
     '/search',
@@ -3657,6 +3664,8 @@ const createApplicationCore = async (
     return { message: 'Logged out' };
   });
 
+  if (options.surferRuntime)
+    registerSurferRoutes(server, options.surferRuntime, requireBrowserSession);
   registerProjectRoutes(
     server,
     projectAdminRepository,
@@ -3676,6 +3685,7 @@ const createApplicationCore = async (
     {
       askCommandCoordinator: options.askCommandCoordinator,
       askAnswerExecution: options.askAnswerExecution,
+      onSurferMeaningAsk: options.onSurferMeaningAsk,
       frontendCommandGateway,
       discoveryFeedbackProductCoordinator,
       frontendSourcesReadCoordinator,

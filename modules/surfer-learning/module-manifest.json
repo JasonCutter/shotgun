@@ -1,0 +1,20 @@
+{
+  "id": "surfer.learning",
+  "version": "0.1.0",
+  "owner": "Surfer Learning and Experiment Service",
+  "deployment": { "modes": ["in_process"] },
+  "dataOwnership": {
+    "owns": [],
+    "readsViaPorts": ["SurferExperimentDatasetPort", "SurferExperimentStorePort"],
+    "directSchemaAccess": false
+  },
+  "consumes": { "commands": [], "events": [] },
+  "produces": { "events": [], "handoffs": [] },
+  "provides": { "queries": [], "capabilities": [] },
+  "requires": { "capabilities": [] },
+  "security": {
+    "requiredContext": ["project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": { "canWriteCanonical": false, "canExecuteExternalAction": false }
+}

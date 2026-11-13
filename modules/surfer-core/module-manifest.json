@@ -1,0 +1,44 @@
+{
+  "id": "surfer.core",
+  "version": "0.1.0",
+  "owner": "Surfer Knowledge Revision and Snapshot Owner",
+  "deployment": {
+    "modes": ["in_process"]
+  },
+  "dataOwnership": {
+    "owns": ["surfer_knowledge.space_state", "surfer_knowledge.source_binding_v2"],
+    "readsViaPorts": [
+      "SurferKnowledgeStorePort",
+      "SurferBindingStorePortV2",
+      "SurferCognitiveSourcePort",
+      "SurferStructureComparisonPort",
+      "SurferStructureReferencePort",
+      "SurferDirectiveMemorySessionPort",
+      "SurferDirectiveScenarioEvaluationPort"
+    ],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": []
+  },
+  "produces": {
+    "events": [],
+    "handoffs": []
+  },
+  "provides": {
+    "queries": [],
+    "capabilities": []
+  },
+  "requires": {
+    "capabilities": []
+  },
+  "security": {
+    "requiredContext": ["project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

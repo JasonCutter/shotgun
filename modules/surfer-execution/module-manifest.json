@@ -1,0 +1,47 @@
+{
+  "id": "surfer.execution",
+  "version": "0.1.0",
+  "owner": "Surfer Execution Budget, Provider and Local Worker Owner",
+  "deployment": {
+    "modes": ["in_process"]
+  },
+  "dataOwnership": {
+    "owns": ["surfer_execution.budget_state", "surfer_execution.semantic_runs"],
+    "readsViaPorts": [
+      "SurferExecutionStorePort",
+      "SurferLocalWorkerPort",
+      "SurferCognitiveSourcePort",
+      "SurferCognitiveValidationPort",
+      "SurferPlanningBudgetPort",
+      "SurferProviderGatewayPort",
+      "SurferSemanticRunStorePort",
+      "SurferSemanticApprovalPort",
+      "SurferSemanticDatasetPort",
+      "SurferAccountCloseoutPort"
+    ],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": []
+  },
+  "produces": {
+    "events": [],
+    "handoffs": []
+  },
+  "provides": {
+    "queries": [],
+    "capabilities": []
+  },
+  "requires": {
+    "capabilities": []
+  },
+  "security": {
+    "requiredContext": ["project"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

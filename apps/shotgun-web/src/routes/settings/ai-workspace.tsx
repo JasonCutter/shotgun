@@ -7,13 +7,16 @@ import type {
   AISettingsCredentialStatus,
   AISettingsProvider,
   AISettingsPrivacyStatus,
+  GlobalShellView,
 } from '@shotgun/api-client';
+import { SurferReadinessPanel } from './surfer-readiness-panel.js';
 
 import { useAppRuntime } from '../../app/providers.js';
 import { convergeOwnerState } from '../../app/query-keys.js';
 import { sessionQueryOptions } from '../../session/session-query.js';
 
 type SettingsOutletContext = {
+  readonly shell?: GlobalShellView;
   readonly requestConfirmation?: (message: string, action: () => void) => void;
 };
 
@@ -98,7 +101,7 @@ const feedbackStyle = (tone: Feedback['tone']): CSSProperties => {
 export const AIWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const queryClient = useQueryClient();
-  const { requestConfirmation } = useOutletContext<SettingsOutletContext>();
+  const { requestConfirmation, shell } = useOutletContext<SettingsOutletContext>();
   const { data: session } = useQuery(sessionQueryOptions(apiClient));
   const targetProjectId = session?.activeProject?.id ?? '';
   const feedbackRef = useRef<HTMLDivElement>(null);
@@ -116,6 +119,7 @@ export const AIWorkspace = () => {
   const [initializedProjectId, setInitializedProjectId] = useState('');
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [testResult, setTestResult] = useState<AITestConnectionResult | null>(null);
+  const [credentialActionPending, setCredentialActionPending] = useState(false);
   const credentialRequestIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
@@ -370,6 +374,7 @@ export const AIWorkspace = () => {
   const runCredentialAction = (action: 'revoke' | 'remove') => {
     if (!settings || !selectedProvider || !usableCredential) return;
     const command = async () => {
+      setCredentialActionPending(true);
       try {
         if (action === 'revoke') {
           await apiClient.revokeAICredential({
@@ -400,6 +405,8 @@ export const AIWorkspace = () => {
           title: `Credential ${action} failed`,
           detail: safeErrorMessage(error),
         });
+      } finally {
+        setCredentialActionPending(false);
       }
     };
     const message =
@@ -464,6 +471,21 @@ export const AIWorkspace = () => {
           connection.
         </p>
       </header>
+
+      {shell &&
+      settings.projectId === targetProjectId &&
+      !settingsQuery.isFetching &&
+      shell.activeProject?.id === targetProjectId &&
+      shell.principalId === session?.principal.id &&
+      shell.accessibleProjects.some((p) => p.id === targetProjectId && p.isOwner) &&
+      !saveMutation.isPending &&
+      !standingPolicyMutation.isPending &&
+      !credentialActionPending ? (
+        <SurferReadinessPanel
+          key={`surfer:${shell.principalId}:${shell.sessionId}:${targetProjectId}:${shell.accessRevision}:${shell.policyContextRevision}:${settingsQuery.dataUpdatedAt}:${serverRevision}:${settings.currentConfiguration?.credentialRevision}:${currentCredential?.lifecycleState}:${standingPolicy?.policyRevision}:${standingEnabled}`}
+          processingEnabled={standingEnabled}
+        />
+      ) : null}
 
       {feedback ? (
         <div

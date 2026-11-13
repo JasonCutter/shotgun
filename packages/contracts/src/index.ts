@@ -6,6 +6,10 @@ export * from './cited-search.js';
 export * from './comparison-review.js';
 export * from './comparison-v2.js';
 export * from './review-operation-v2.js';
+export * from './surfer-learning.js';
+export * from './surfer-experiment.js';
+export * from './surfer-knowledge.js';
+export * from './surfer-source.js';
 export * from './compiled-truth.js';
 export * from './discovery-finding.js';
 export * from './discovery-ai.js';
@@ -60,3 +64,14 @@ export * from './discovery-trigger-coordination.js';
 export * from './discovery-feedback.js';
 export * from './typed-proposition-conflict.js';
 export * from './review-operation-v2.js';
+
+export * from './surfer-execution.js';
+
+export * from './surfer-source-binding-v2.js';
+
+export * from './surfer-cognition.js';
+export * from './surfer-provider.js';
+export * from './surfer-account-authority.js';
+export * from './surfer-semantic-run.js';
+export * from './surfer-runtime-controls.js';
+export * from './surfer-structure.js';

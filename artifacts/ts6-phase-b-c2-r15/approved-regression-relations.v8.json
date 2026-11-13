@@ -375,8 +375,8 @@
       "file": "tests/database/runtime-data-integrity-wp04-schema.test.ts",
       "testName": "rejects malformed lease inputs before opening a PostgreSQL transaction",
       "covers": [
-        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122",
-        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:995"
+        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:142",
+        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:1014"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesStage3ProgressRepository.claim",
@@ -386,7 +386,7 @@
       "testEvidenceId": "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 3 atomic persistence: reconciles all authorities after ACK loss",
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 3 atomic persistence: reconciles all authorities after ACK loss",
-      "covers": ["safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:590"],
+      "covers": ["safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:609"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesStage3AtomicPersistence.persist",
       "path": ["PostgresSourcesStage3AtomicPersistence.persist"]
@@ -621,7 +621,7 @@
       "testEvidenceId": "test:tests/database/frontend-ask-write-postgres.database.test.ts:commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
       "file": "tests/database/frontend-ask-write-postgres.database.test.ts",
       "testName": "commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
-      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123"],
+      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146"],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "executionService.startWorker",
       "path": [
@@ -855,7 +855,7 @@
       "testEvidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:commits work performed through the Ask execution transaction boundary",
       "file": "tests/database/a9-final-closure-evidence.test.ts",
       "testName": "commits work performed through the Ask execution transaction boundary",
-      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2377"],
+      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2400"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskAnswerExecutionRepository.transaction",
       "path": ["transaction"]
@@ -1103,6 +1103,87 @@
         "PostgresIsolatedNegativeKnowledgeJobs.completeRecordedNoEdge",
         "PostgresIsolatedNegativeKnowledgeJobs.finish"
       ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-app-runtime.database.test.ts:launches v12 and persists separate setting units and scope exceptions",
+      "file": "tests/database/surfer-app-runtime.database.test.ts",
+      "testName": "launches v12 and persists separate setting units and scope exceptions",
+      "covers": ["safe:adapters/surfer-account-authority-postgres/src/index.ts:127"],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "automaticMeaningCase",
+      "path": ["automaticMeaningCase", "isCurrent"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-routing.database.test.ts:rolls back final queue ack and resumes the stored preparation/checkpoint through a new runtime-role connection",
+      "file": "tests/database/surfer-routing.database.test.ts",
+      "testName": "rolls back final queue ack and resumes the stored preparation/checkpoint through a new runtime-role connection",
+      "covers": ["safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:182"],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "cycle",
+      "path": ["cycle", "finish"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-routing.database.test.ts:deduplicates enqueue without replacing the original preparation or reactivating completed work",
+      "file": "tests/database/surfer-routing.database.test.ts",
+      "testName": "deduplicates enqueue without replacing the original preparation or reactivating completed work",
+      "covers": ["safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:75"],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "enqueue",
+      "path": ["enqueue"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-history.database.test.ts:rolls back a mid-batch SQL failure with no row or cursor residue",
+      "file": "tests/database/surfer-history.database.test.ts",
+      "testName": "rolls back a mid-batch SQL failure with no row or cursor residue",
+      "covers": ["safe:adapters/surfer-history-postgres/src/index.ts:49"],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "copyBatch",
+      "path": ["copyBatch", "tx"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-intake.database.test.ts:uses read-only status queries and refuses a permission change between metadata read and response",
+      "file": "tests/database/surfer-intake.database.test.ts",
+      "testName": "uses read-only status queries and refuses a permission change between metadata read and response",
+      "covers": ["safe:adapters/surfer-intake-postgres/src/index.ts:111"],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "intakeStatus",
+      "path": ["intakeStatus", "list"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-intake.database.test.ts:deduplicates concurrent delivery and preserves the original event and transition identity",
+      "file": "tests/database/surfer-intake.database.test.ts",
+      "testName": "deduplicates concurrent delivery and preserves the original event and transition identity",
+      "covers": ["safe:adapters/surfer-intake-postgres/src/index.ts:47"],
+      "coverageKind": "PUBLIC_PATH",
+      "entrySymbol": "onSourceIndexed",
+      "path": ["onSourceIndexed", "enqueue"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure",
+      "file": "tests/database/surfer-knowledge-rows.database.test.ts",
+      "testName": "rolls back artifact/receipt/metadata together on a later insert failure",
+      "covers": ["safe:adapters/surfer-knowledge-rows-postgres/src/index.ts:152"],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "execute",
+      "path": ["execute", "tx"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-source-v2.database.test.ts:keeps coherent MVCC content proofs and rejects escaped/unawaited v2 capabilities",
+      "file": "tests/database/surfer-source-v2.database.test.ts",
+      "testName": "keeps coherent MVCC content proofs and rejects escaped/unawaited v2 capabilities",
+      "covers": ["safe:adapters/surfer-shotgun-source-postgres/src/index.ts:254"],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "withSnapshotV2",
+      "path": ["withSnapshotV2", "openSnapshot"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-cutover.database.test.ts:rolls back mode/metadata/records/captures when activation fails at the binding insert",
+      "file": "tests/database/surfer-cutover.database.test.ts",
+      "testName": "rolls back mode/metadata/records/captures when activation fails at the binding insert",
+      "covers": ["safe:adapters/surfer-storage-postgres/src/index.ts:63"],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "activate",
+      "path": ["activate", "tx"]
     }
   ]
 }

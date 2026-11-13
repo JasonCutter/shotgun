@@ -17,7 +17,10 @@ import { decodeSurferAccountAuthorityConfigV2 } from '../../../packages/contract
 import { decodeSurferSourceRequest } from '../../../packages/contracts/src/surfer-source.js';
 import { surferDigest, surferFailure } from '../../../packages/contracts/src/surfer-learning.js';
 import { ShotgunError } from '../../../packages/contracts/src/errors.js';
-import { surferAccountAuthorityFromConfig } from '../../../adapters/surfer-account-authority-postgres/src/index.js';
+import {
+  surferAccountAuthorityFromConfig,
+  type PostgresSurferAccountAuthority,
+} from '../../../adapters/surfer-account-authority-postgres/src/index.js';
 import { PostgresSurferExecutionStore } from '../../../adapters/surfer-execution-postgres/src/index.js';
 import { PostgresSurferSourceSession } from '../../../adapters/surfer-shotgun-source-postgres/src/index.js';
 import { ShotgunSurferProviderGateway } from '../../../adapters/surfer-shotgun-bridge/src/provider.js';
@@ -89,6 +92,7 @@ export function createSurferAccountRuntime(
     authorityDatabaseUrl: options.authorityDatabaseUrl,
     config,
   });
+  const authority: PostgresSurferAccountAuthority = account.authority;
   const source = new PostgresSurferSourceSession(pool);
   let closed = false,
     closing: Promise<void> | undefined;
@@ -122,7 +126,7 @@ export function createSurferAccountRuntime(
       metadata.lifecycleState !== 'active'
     )
       return 'CREDENTIAL_UNAVAILABLE';
-    if (!(await account.authority.isCurrent(projectId))) return 'ACCOUNT_REVIEW_REQUIRED';
+    if (!(await authority.isCurrent(projectId))) return 'ACCOUNT_REVIEW_REQUIRED';
     if (closed) return 'UNAVAILABLE';
     if (Date.now() >= policy.deadlineAtMs) return 'RUN_EXPIRED';
     return 'PROFILE_CONNECTED';

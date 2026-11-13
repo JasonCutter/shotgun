@@ -1969,7 +1969,8 @@ export const startShotgunApplication = async (
         let relationBudget: ReturnType<typeof globalRelationBudgetFromEnvironment> | undefined;
         try {
           relationBudget = globalRelationBudgetFromEnvironment(databaseUrl, relationFingerprint);
-          await relationBudget.budget.status();
+          const budget: PostgresGlobalRelationBudget = relationBudget.budget;
+          await budget.status();
         } catch (error) {
           await relationBudget?.close();
           relationBudget = undefined;

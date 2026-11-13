@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import Fastify from 'fastify';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import staticPlugin from '@fastify/static';
 
 import {
@@ -3191,7 +3191,7 @@ const createApplicationCore = async (
     );
   };
 
-  server.setErrorHandler(async (error, request, reply) => {
+  server.setErrorHandler(async (error, request, reply: FastifyReply) => {
     const normalized =
       error instanceof ShotgunError
         ? error
@@ -3894,7 +3894,7 @@ const createApplicationCore = async (
     };
   });
 
-  server.get('/auth/csrf', async (request, reply) => {
+  server.get('/auth/csrf', async (request, reply: FastifyReply) => {
     const sessionToken = parseCookie(request.headers.cookie, sessionCookieName);
     if (!sessionToken) return reply.status(401).send({ message: 'Authentication required' });
     const session = await authRepository.findSession(sessionToken);

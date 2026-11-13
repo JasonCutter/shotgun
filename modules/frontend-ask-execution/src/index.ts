@@ -1095,7 +1095,9 @@ export class AskAnswerExecutionService {
           workerId,
         });
       }
-      const surferMemory = await this.memoryContext?.prepare(scope, claimed);
+      const surferMemory = this.memoryContext
+        ? await this.memoryContext.prepare(scope, claimed)
+        : undefined;
       if (surferMemory) await this.memoryContext!.validate(scope, claimed, surferMemory);
       const result = await provider.execute({
         ...(surferMemory ? { surferMemory } : {}),

@@ -160,8 +160,8 @@ it('upgrades main 128 additively, preserves a historical receipt, and resets an 
     ).toEqual([{ global_claim_id: null, semantic_attempt_id: null }]);
     // Extend, rather than replace, the historical P0/URL/Frontier gates above.
     // Image and isolated negative migrations remain additive to this workload copy.
-    await migrateUpTo(undefined, db.databaseUrl);
-    await migrateUpTo(undefined, db.databaseUrl);
+    await migrateUpTo('140_vp_isolated_negative_knowledge.sql', db.databaseUrl);
+    await migrateUpTo('140_vp_isolated_negative_knowledge.sql', db.databaseUrl);
     expect(
       (await pool.query('SELECT count(*)::int AS n FROM runtime.schema_migrations')).rows[0].n,
     ).toBe(before + 12);
@@ -202,8 +202,18 @@ it('upgrades main 128 additively, preserves a historical receipt, and resets an 
       (await pool.query('SELECT count(*)::int AS n FROM vp_global_budget.authority_store')).rows[0]
         .n,
     ).toBe(0);
+    // Exercise the current Surfer workload migration and reset together.
+    await migrateUpTo(undefined, db.databaseUrl);
+    await migrateUpTo(undefined, db.databaseUrl);
+    expect(
+      (await pool.query('SELECT name FROM runtime.schema_migrations ORDER BY name DESC LIMIT 1'))
+        .rows,
+    ).toEqual([{ name: '174_surfer_t3_reset_preflight.sql' }]);
     await dropSchemas(db.databaseUrl);
     await migrateUpTo(undefined, db.databaseUrl);
+    expect(
+      (await pool.query("SELECT to_regclass('provider_account.roots')::text AS roots")).rows,
+    ).toEqual([{ roots: 'provider_account.roots' }]);
     expect(
       (await pool.query('SELECT count(*)::int AS n FROM vp_global_budget.authority_store')).rows[0]
         .n,

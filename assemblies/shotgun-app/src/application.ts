@@ -1,3 +1,19 @@
+import {
+  startApplicationSurferMeaning,
+  type SurferMeaningApplicationOptions,
+} from './surfer-meaning-runtime.js';
+import { createSurferApplicationRuntime } from './surfer-runtime.js';
+import { loadSurferMeaningLaunch } from './surfer-meaning-launch.js';
+import { createSurferEngineHost } from './surfer-engine-host.js';
+import { PostgresSurferAskMemory } from '../../../adapters/surfer-ask-memory-postgres/src/index.js';
+import {
+  createSurferAccountRuntime,
+  type SurferAccountApplicationOptions,
+} from './surfer-account-runtime.js';
+import {
+  startApplicationSurferIntake,
+  type SurferIntakeApplicationOptions,
+} from './surfer-intake-scheduler.js';
 import { CredentialBackedAIProviderAdapter } from '../../../adapters/ai-provider-router/src/index.js';
 import { PostgresGlobalRelationBudget } from '../../../adapters/vp-global-provider-budget-postgres/src/index.js';
 import {
@@ -338,6 +354,13 @@ export type StartShotgunApplicationOptions = {
   /** Test/recovery scheduling override; normal URL refresh remains bounded.
    * This never grants owner, source or provider authority. */
   readonly sourceRefreshIntervalMs?: number | false;
+  /** Opt-in server execution/actor capabilities. Normal launch and recovery never bootstrap them. */
+  readonly surferIntake?: SurferIntakeApplicationOptions;
+  /** Explicit review profile/actor capability; no default, recovery or candidate selection hook. */
+  readonly surferMeaning?: SurferMeaningApplicationOptions;
+  readonly surferMeaningAccount?: SurferAccountApplicationOptions;
+  /** Explicit native DeepSeek/Vault/account assembly; no default activation or provisioning. */
+  readonly surferAccount?: SurferAccountApplicationOptions;
   /** LPA-WP5 (D12 recovery harness): do not install SIGINT/SIGTERM handlers. */
   readonly noSignals?: boolean;
   /** LPA-WP5 (D12 recovery harness): do NOT start the Ask answer background
@@ -461,6 +484,15 @@ export const startShotgunApplication = async (
   const databaseUrl = configuration.databaseUrl as string;
   const stagingSecret = configuration.stagingSecret as string;
   const recoveryHarness = environmentProfile === 'recovery';
+  const meaningLaunch = recoveryHarness ? undefined : await loadSurferMeaningLaunch(environment);
+  if (meaningLaunch && (options.surferMeaning || options.surferMeaningAccount))
+    throw new Error('Choose one fixed meaning review execution configuration.');
+  if (
+    meaningLaunch &&
+    environmentProfile !== 'runtime-test' &&
+    meaningLaunch.options.accountConfig.profile.mode !== 'LIVE'
+  )
+    throw new Error('A live registered meaning review profile is required for standard launch.');
   const isolatedRelationPolicy = options.isolatedRelationPolicy;
   if (isolatedRelationPolicy !== undefined) {
     const provider = isolatedRelationPolicy.fakeProvider;
@@ -547,6 +579,8 @@ export const startShotgunApplication = async (
     throw new Error('Live image acceptance requires its explicit pinned provider base URL.');
 
   const cleanupStack = new AsyncCleanupStack();
+  if (meaningLaunch)
+    cleanupStack.add('Surfer review browser authority', async () => meaningLaunch.clear());
   const pool = createPostgresPool(databaseUrl);
   cleanupStack.add('database pool', () => pool.end());
   const runtimeMaintenanceClient = new Client({
@@ -966,7 +1000,9 @@ export const startShotgunApplication = async (
       credentialVault,
       { legacyCredential: () => process.env.GEMINI_API_KEY },
     );
-    const stage4AIExecutionResolver: AIProviderExecutionResolverPort = {
+    const sourceExecutionResolver = (
+      router: AIProviderRouter,
+    ): AIProviderExecutionResolverPort => ({
       resolve: async (input) => {
         const resolved = await executionIdentityResolver.resolveSourceAIExecutionIdentity({
           principalId: 'stage4-source-materialization',
@@ -980,7 +1016,7 @@ export const startShotgunApplication = async (
             ? {}
             : { existingIdentity: input.existingIdentity }),
         });
-        const adapter = await providerRouter.resolveStructured({
+        const adapter = await router.resolveStructured({
           projectId: input.projectId,
           executionPin: resolved.pin,
         });
@@ -989,7 +1025,72 @@ export const startShotgunApplication = async (
           executionIdentity: resolved.executionIdentity,
         };
       },
-    };
+    });
+    const stage4AIExecutionResolver = sourceExecutionResolver(providerRouter);
+    if (options.surferIntake && options.surferAccount)
+      throw new Error('Choose one fixed Surfer execution configuration.');
+    if (options.surferMeaning && options.surferMeaningAccount)
+      throw new Error('Choose one fixed meaning review execution configuration.');
+    const surferAccount =
+      !recoveryHarness && options.surferAccount
+        ? createSurferAccountRuntime(pool, options.surferAccount, {
+            workloadDatabaseUrl: databaseUrl,
+            // Surfer owns its codec/checkpoint, including malformed JSON receipts.
+            // Keep the existing Stage4/Ask/Discovery ADAPTER validation unchanged.
+            resolver: sourceExecutionResolver(
+              new AIProviderRouter(
+                aiProviderRegistry,
+                new StaticAIProviderConnectivityRegistry([
+                  new DeepSeekConnectivityAdapter({
+                    baseUrl: process.env.DEEPSEEK_BASE_URL,
+                    structuredContentValidation: 'CALLER',
+                  }),
+                ]),
+                credentialVault,
+                {},
+              ),
+            ),
+            configuration: projectAIConfiguration,
+            vault: credentialVault,
+          })
+        : undefined;
+    if (surferAccount) cleanupStack.add('Surfer account binding', () => surferAccount.close());
+    const meaningAccountOptions = meaningLaunch?.options ?? options.surferMeaningAccount;
+    const meaningAccount =
+      !recoveryHarness && meaningAccountOptions
+        ? createSurferAccountRuntime(pool, meaningAccountOptions, {
+            workloadDatabaseUrl: databaseUrl,
+            resolver: sourceExecutionResolver(
+              new AIProviderRouter(
+                aiProviderRegistry,
+                new StaticAIProviderConnectivityRegistry([
+                  new DeepSeekConnectivityAdapter({
+                    baseUrl: process.env.DEEPSEEK_BASE_URL,
+                    structuredContentValidation: 'CALLER',
+                  }),
+                ]),
+                credentialVault,
+                {},
+              ),
+            ),
+            configuration: projectAIConfiguration,
+            vault: credentialVault,
+          })
+        : undefined;
+    if (meaningAccount)
+      cleanupStack.add('Surfer meaning account binding', () => meaningAccount.close());
+    const meaningOptions = meaningAccount ?? options.surferMeaning;
+    const surferIntakeOptions = surferAccount ?? options.surferIntake;
+    const surferRuntime = createSurferApplicationRuntime(
+      pool,
+      recoveryHarness ? undefined : surferIntakeOptions?.execution,
+      recoveryHarness ? undefined : meaningOptions?.execution,
+      meaningLaunch && {
+        notBeforeMs: meaningLaunch.notBeforeMs,
+        principalId: meaningLaunch.principalId,
+      },
+    );
+    const surferAskMemory = recoveryHarness ? undefined : new PostgresSurferAskMemory(pool);
     const askAnswerExecution = new AskAnswerExecutionService(
       new PostgresAskAnswerExecutionRepository(
         pool,
@@ -998,6 +1099,9 @@ export const startShotgunApplication = async (
         hybridRetrievalCoordinator,
         new PostgresVPAskEvidenceSearch(pool, imageObservationLedger),
         imageObservationLedger,
+        surferAskMemory
+          ? (client, input) => surferAskMemory.assertPublication(client, input)
+          : undefined,
       ),
       askAnswerProvider,
       {
@@ -1005,17 +1109,56 @@ export const startShotgunApplication = async (
         providerPolicy: askProviderPolicy,
         executionIdentityResolver,
         providerRouter,
+        memoryContext: surferAskMemory,
       },
     );
+    const disableAskWorker = options.disableAskWorker ?? recoveryHarness;
+    const surferEngine = createSurferEngineHost({
+      answers: askAnswerExecution,
+      knowledge: surferRuntime,
+      startAnswers: () =>
+        disableAskWorker
+          ? undefined
+          : askAnswerExecution.startWorker(
+              Number.parseInt(process.env.ASK_WORKER_INTERVAL_MS ?? '1000', 10),
+            ),
+      startLearning: async () => {
+        const learning = new AsyncCleanupStack();
+        let active = false;
+        try {
+          const intake = startApplicationSurferIntake(
+            surferRuntime,
+            surferIntakeOptions,
+            recoveryHarness,
+          );
+          if (intake) {
+            learning.add('Surfer Source intake', () => intake.stop());
+            active = true;
+          }
+          const meaning = startApplicationSurferMeaning(
+            surferRuntime,
+            meaningOptions,
+            recoveryHarness,
+          );
+          if (meaning) {
+            learning.add('Surfer meaning review', () => meaning.stop());
+            active = true;
+          }
+          return active ? () => learning.close() : undefined;
+        } catch (error) {
+          await learning.close();
+          throw error;
+        }
+      },
+    });
     const askCommandCoordinator = new AskCommandCoordinator(
       commandGateway,
       askConversationRepository,
       askWorkspaceProjection,
       askSourceSelectionValidator,
-      askAnswerExecution,
+      surferEngine.answers,
       askProviderPolicy,
     );
-    const disableAskWorker = options.disableAskWorker ?? recoveryHarness;
 
     const graphReadAdapter = new PostgresCompiledTruthGraphReadAdapter(
       compiledTruthRepository,
@@ -1429,6 +1572,8 @@ export const startShotgunApplication = async (
         });
 
     application = await createApplication({
+      surferRuntime: surferEngine.knowledge,
+      onSurferMeaningAsk: meaningLaunch?.accept,
       connectorRuntimeState: new PostgresConnectorRuntimeState(pool),
       projectAdminRepository,
       projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
@@ -1545,7 +1690,7 @@ export const startShotgunApplication = async (
       transformer,
       evidenceLocator: plainTextAdapter,
       aiProvider: aiProvider,
-      askAnswerExecution,
+      askAnswerExecution: surferEngine.answers,
       aiProviderPolicy: {
         // The request-time Stage 4 resolver is the governing private-data
         // authority. This flag is only the legacy module-level safety floor;
@@ -1617,6 +1762,13 @@ export const startShotgunApplication = async (
       });
     };
     stage4Publisher.current = async (input) => {
+      await surferEngine.onSourceIndexed({
+        projectId: input.projectId,
+        sourceId: input.sourceId,
+        sourceVersionId: input.sourceVersionId,
+        revisionId: input.revisionId,
+        evidenceCount: input.evidenceCount,
+      });
       const delivery = await runningApplication.kernel.connector.publishEvent({
         messageId: randomUUID(),
         messageType: 'EvidenceIndexed',
@@ -1663,6 +1815,8 @@ export const startShotgunApplication = async (
     // Recovery verification is intentionally limited to Canonical Projection
     // recovery.  Do not claim or publish pending Stage 4 work against the
     // restored database while the recovery harness is running.
+    cleanupStack.add('Surfer engine execution host', () => surferEngine.stop());
+    await surferEngine.startLearning();
     if (!recoveryHarness) {
       const sourceRefresh = createSourceRefreshRuntime({
         pool,
@@ -1815,7 +1969,8 @@ export const startShotgunApplication = async (
         let relationBudget: ReturnType<typeof globalRelationBudgetFromEnvironment> | undefined;
         try {
           relationBudget = globalRelationBudgetFromEnvironment(databaseUrl, relationFingerprint);
-          await relationBudget.budget.status();
+          const budget: PostgresGlobalRelationBudget = relationBudget.budget;
+          await budget.status();
         } catch (error) {
           await relationBudget?.close();
           relationBudget = undefined;
@@ -1891,14 +2046,7 @@ export const startShotgunApplication = async (
     }
     const { server } = application;
 
-    let askWorkerStarted = false;
-    if (!disableAskWorker) {
-      const stopAskAnswerWorker = await askAnswerExecution.startWorker(
-        Number.parseInt(process.env.ASK_WORKER_INTERVAL_MS ?? '1000', 10),
-      );
-      cleanupStack.add('Ask answer worker', stopAskAnswerWorker);
-      askWorkerStarted = true;
-    }
+    const askWorkerStarted = await surferEngine.startAnswers();
 
     let closed = false;
     let listening = false;

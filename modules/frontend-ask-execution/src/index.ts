@@ -1,4 +1,6 @@
+import type { SurferAskMeaningProposalReceipt } from '../../../packages/contracts/src/surfer-ask-discovery.js';
 import { randomUUID } from 'node:crypto';
+import type { SurferAskMemoryContext } from '../../../packages/contracts/src/surfer-ask-memory.js';
 
 import {
   ShotgunError,
@@ -131,6 +133,7 @@ export type AskAnswerProviderCitation = {
 };
 
 export type AskAnswerProviderRequest = {
+  readonly surferMemory?: SurferAskMemoryContext;
   readonly answerRunId: string;
   readonly question: string;
   readonly mode: AskAnswerRunSnapshot['mode'];
@@ -149,6 +152,7 @@ export type AskAnswerProviderRequest = {
 };
 
 export type AskAnswerProviderResult = {
+  readonly meaningProposal?: SurferAskMeaningProposalReceipt;
   readonly answer: string;
   readonly citations: readonly AskAnswerProviderCitation[];
   readonly generatedObservationReferences?: readonly { readonly observationId: string }[];
@@ -246,6 +250,14 @@ export type AskExecutionRunContext = {
 export type AskClaimedExecution = {
   readonly attempt: AskExecutionAttempt;
   readonly context: AskExecutionRunContext;
+};
+export type AskMemoryContextPort = {
+  prepare(scope: AskExecutionScope, claimed: AskClaimedExecution): Promise<SurferAskMemoryContext>;
+  validate(
+    scope: AskExecutionScope,
+    claimed: AskClaimedExecution,
+    context: SurferAskMemoryContext,
+  ): Promise<void>;
 };
 
 export type AskExecutionIdentityResolverPort = {
@@ -384,6 +396,7 @@ export type AskAnswerExecutionRepositoryPort = {
     readonly workerId: string;
   }): Promise<void>;
   complete(input: {
+    readonly meaningProposal?: SurferAskMeaningProposalReceipt;
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly attemptNumber: number;
@@ -683,17 +696,20 @@ export class AskAnswerExecutionService {
       readonly providerPolicy?: AskProviderPolicyResolverPort;
       readonly executionIdentityResolver?: AskExecutionIdentityResolverPort;
       readonly providerRouter?: AskAnswerProviderRouterPort;
+      readonly memoryContext?: AskMemoryContextPort;
     } = {},
   ) {
     this.maxConcurrency = Math.max(1, Math.floor(options.maxConcurrency ?? 4));
     this.providerPolicy = options.providerPolicy;
     this.executionIdentityResolver = options.executionIdentityResolver;
     this.providerRouter = options.providerRouter;
+    this.memoryContext = options.memoryContext;
   }
 
   private readonly providerPolicy?: AskProviderPolicyResolverPort;
   private readonly executionIdentityResolver?: AskExecutionIdentityResolverPort;
   private readonly providerRouter?: AskAnswerProviderRouterPort;
+  private readonly memoryContext?: AskMemoryContextPort;
 
   async enqueue(input: AskExecutionScope & { readonly answerRunId: string }): Promise<void> {
     // HTTP enqueue is only a wake hint. The durable worker owns claim and execution.
@@ -1079,7 +1095,12 @@ export class AskAnswerExecutionService {
           workerId,
         });
       }
+      const surferMemory = this.memoryContext
+        ? await this.memoryContext.prepare(scope, claimed)
+        : undefined;
+      if (surferMemory) await this.memoryContext!.validate(scope, claimed, surferMemory);
       const result = await provider.execute({
+        ...(surferMemory ? { surferMemory } : {}),
         answerRunId: context.snapshot.answerRunId,
         question: context.snapshot.question,
         mode: context.snapshot.mode,
@@ -1094,6 +1115,8 @@ export class AskAnswerExecutionService {
         ...(executionPin ? { executionPin } : {}),
         signal: controller.signal,
         onPartial: async (partialText) => {
+          // Enhanced answers are published only after final currentness checks.
+          if (surferMemory?.packet) return;
           if (!partialText.trim() || controller.signal.aborted) return;
           await this.repository.appendPartial({
             scope,
@@ -1152,6 +1175,7 @@ export class AskAnswerExecutionService {
         });
       }
       const citations = this.validateCitations(context, result.citations);
+      if (surferMemory) await this.memoryContext!.validate(scope, claimed, surferMemory);
       const generatedObservationReferences = this.validateGeneratedObservationReferences(
         context,
         result.generatedObservationReferences ?? [],
@@ -1161,6 +1185,7 @@ export class AskAnswerExecutionService {
         answerRunId: context.snapshot.answerRunId,
         attemptNumber: attempt.attemptNumber,
         answer: result.answer,
+        ...(result.meaningProposal ? { meaningProposal: result.meaningProposal } : {}),
         citations,
         ...(generatedObservationReferences.length ? { generatedObservationReferences } : {}),
         ...(result.answerSupportStatus ? { answerSupportStatus: result.answerSupportStatus } : {}),

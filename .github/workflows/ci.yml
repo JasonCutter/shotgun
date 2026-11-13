@@ -95,8 +95,21 @@ jobs:
         run: npm run stage12:reuse-operations-gate
       - name: Run CI test suite
         run: npm run test:ci
-      - name: Install PostgreSQL client tools
-        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+      - name: Use backup tools from the PostgreSQL service image
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          for tool in pg_dump pg_restore; do
+            wrapper="$RUNNER_TEMP/$tool"
+            cat > "$wrapper" <<EOF
+          #!/usr/bin/env bash
+          exec docker exec -i -e PGUSER -e PGDATABASE -e PGPASSWORD -e PGSSLMODE '$POSTGRES_CONTAINER' '$tool' "\$@"
+          EOF
+            chmod +x "$wrapper"
+            "$wrapper" --version
+          done
+          echo "PG_DUMP_BIN=$RUNNER_TEMP/pg_dump" >> "$GITHUB_ENV"
+          echo "PG_RESTORE_BIN=$RUNNER_TEMP/pg_restore" >> "$GITHUB_ENV"
       - name: Run database tests
         run: npm run test:database
 

@@ -49,6 +49,8 @@ import {
 import { useOwnerCommandController } from '../section3/global-tools.js';
 import { isConversationLayoutEnabled } from '../shell/conversation-layout.js';
 import { AskSupportControls, ConversationPane, GlobalComposer } from './ask-shell-presentation.js';
+import { SurferMemoryPanel } from './surfer-memory-panel.js';
+import { SurferRulePanel } from './surfer-rule-panel.js';
 
 const SOURCE_CONTEXT_QUERY: SourceLibraryQuery = {
   schemaVersion: '1.0.0',
@@ -1201,6 +1203,7 @@ export const AskShellConversationPane = ({
   readonly showConversationList?: boolean;
 }) => {
   const {
+    shell,
     workspace,
     activeConversationId,
     error,
@@ -1235,6 +1238,8 @@ export const AskShellConversationPane = ({
 
   return (
     <>
+      <SurferMemoryPanel key={`${shell.sessionId}:${shell.activeProject?.id ?? ''}`} />
+      <SurferRulePanel key={`rule:${shell.sessionId}:${shell.activeProject?.id ?? ''}`} />
       <ConversationPane
         showConversationList={showConversationList}
         workspace={workspace}

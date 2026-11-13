@@ -909,7 +909,10 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
         sourceId: row.source_id,
         sourceVersionId: row.source_version_id,
         evidenceId: row.evidence_id,
-        ...(row.exact_quote ? { exactQuote: row.exact_quote } : {}),
+        // The optional browser excerpt is bounded; full quote and Evidence lineage stay in storage.
+        ...(row.exact_quote && row.exact_quote.length <= 10000
+          ? { exactQuote: row.exact_quote }
+          : {}),
         ...(pageNumbersFromSourceSelectors(row.selectors).length > 0
           ? { pageNumbers: pageNumbersFromSourceSelectors(row.selectors) }
           : {}),

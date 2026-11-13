@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 import {
   buildEvidenceCandidates,
@@ -31,7 +31,6 @@ import {
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import { PostgresEvidenceRepository, PostgresTransformationRepository } from './index.js';
 
-const nowIso = (): string => new Date().toISOString();
 const MAX_STAGE3_LEASE_DURATION_MS = 5 * 60_000;
 
 type Stage3AtomicPersistenceResult = {
@@ -44,9 +43,11 @@ type Stage3AtomicPersistenceResult = {
 const isOutcomeUnknown = (error: unknown): error is ShotgunError =>
   error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
 
-const validateLeaseInput = (now: string | undefined, leaseDurationMs: number): string => {
-  const resolvedNow = now ?? nowIso();
-  if (!Number.isFinite(Date.parse(resolvedNow))) {
+const validateLeaseInput = (
+  now: string | undefined,
+  leaseDurationMs: number,
+): string | undefined => {
+  if (now !== undefined && !Number.isFinite(Date.parse(now))) {
     throw new ShotgunError({
       code: 'VALIDATION_ERROR',
       safeMessage: 'Stage 3 lease timestamp must be a valid ISO timestamp.',
@@ -66,7 +67,26 @@ const validateLeaseInput = (now: string | undefined, leaseDurationMs: number): s
       operation: 'validate-stage3-lease',
     });
   }
-  return resolvedNow;
+  return now;
+};
+
+/** Read only after acquiring the row lock. Keep comparisons at PG microsecond precision. */
+const executionClock = async (
+  client: PoolClient,
+  explicit: string | undefined,
+  lease: string | null = null,
+  retry: string | null = null,
+) => {
+  const result = await client.query<{
+    now: string;
+    lease_active: boolean | null;
+    retry_not_due: boolean | null;
+  }>(
+    `WITH observed AS MATERIALIZED (SELECT COALESCE($1::timestamptz,clock_timestamp()) AS instant)
+     SELECT instant::text AS now,$2::timestamptz>instant AS lease_active,$3::timestamptz>instant AS retry_not_due FROM observed`,
+    [explicit ?? null, lease, retry],
+  );
+  return result.rows[0]!;
 };
 
 export class PostgresSourcesStage3ProgressRepository implements SourcesStage3ProgressPort {
@@ -81,9 +101,9 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
     const inserted = await this.pool.query(
       `INSERT INTO source_product.source_stage3_progress (
          project_id, source_id, source_version_id, state, created_at, updated_at
-       ) VALUES ($1, $2, $3, 'MATERIALIZED', $4, $4)
+       ) VALUES ($1, $2, $3, 'MATERIALIZED', COALESCE($4::timestamptz,statement_timestamp()), COALESCE($4::timestamptz,statement_timestamp()))
        ON CONFLICT (project_id, source_version_id) DO NOTHING`,
-      [input.projectId, input.sourceId, input.sourceVersionId, input.createdAt ?? nowIso()],
+      [input.projectId, input.sourceId, input.sourceVersionId, input.createdAt ?? null],
     );
     if (inserted.rowCount === 1) return;
     const existing = await this.pool.query<{ source_id: string }>(
@@ -110,7 +130,7 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
     readonly leaseDurationMs: number;
     readonly now?: string;
   }): Promise<SourcesStage3ClaimResult> {
-    const now = validateLeaseInput(input.now, input.leaseDurationMs);
+    const explicitNow = validateLeaseInput(input.now, input.leaseDurationMs);
     const leaseToken = randomUUID();
     let intendedClaim:
       | {
@@ -125,12 +145,12 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
           const row = await client.query<{
             state: SourcesStage3ProgressState;
             fencing_token: string;
-            lease_expires_at: Date | null;
-            next_attempt_at: Date | null;
+            lease_expires_at: string | null;
+            next_attempt_at: string | null;
             indexing_result_id: string | null;
             safe_failure_code: string | null;
           }>(
-            `SELECT state, fencing_token::text, lease_expires_at, next_attempt_at,
+            `SELECT state, fencing_token::text, lease_expires_at::text, next_attempt_at::text,
                     indexing_result_id::text, safe_failure_code
                FROM source_product.source_stage3_progress
               WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
@@ -207,18 +227,17 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
                     : 'TERMINAL_FAILURE',
             };
           }
-          if (
-            current.state === 'STAGE3_RUNNING' &&
-            current.lease_expires_at &&
-            current.lease_expires_at.getTime() > Date.parse(now)
-          ) {
+          const clock = await executionClock(
+              client,
+              explicitNow,
+              current.lease_expires_at,
+              current.next_attempt_at,
+            ),
+            now = clock.now;
+          if (current.state === 'STAGE3_RUNNING' && clock.lease_active) {
             return { status: 'DEFERRED' as const, reason: 'ACTIVE_LEASE' as const };
           }
-          if (
-            current.state === 'STAGE3_RETRYABLE' &&
-            current.next_attempt_at &&
-            current.next_attempt_at.getTime() > Date.parse(now)
-          ) {
+          if (current.state === 'STAGE3_RETRYABLE' && clock.retry_not_due) {
             return { status: 'DEFERRED' as const, reason: 'RETRY_NOT_DUE' as const };
           }
           if (current.state === 'STAGE3_RUNNING') {
@@ -549,9 +568,9 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
         WHERE progress.state = 'MATERIALIZED'
            OR (progress.state = 'STAGE3_RETRYABLE'
                AND (progress.next_attempt_at IS NULL
-                    OR progress.next_attempt_at <= COALESCE($1::timestamptz, now())))
+                    OR progress.next_attempt_at <= COALESCE($1::timestamptz, clock_timestamp())))
            OR (progress.state = 'STAGE3_RUNNING'
-               AND progress.lease_expires_at <= COALESCE($1::timestamptz, now()))
+               AND progress.lease_expires_at <= COALESCE($1::timestamptz, clock_timestamp()))
         ORDER BY progress.updated_at, progress.source_version_id
         LIMIT $2`,
       [input?.now ?? null, input?.limit ?? 100],
@@ -972,7 +991,7 @@ export class PostgresSourcesStage4ContinuationStore implements SourcesStage4Cont
     readonly leaseDurationMs: number;
     readonly now?: string;
   }) {
-    const now = validateLeaseInput(input.now, input.leaseDurationMs);
+    const explicitNow = validateLeaseInput(input.now, input.leaseDurationMs);
     const leaseToken = randomUUID();
     let intendedClaim:
       | {
@@ -1017,15 +1036,16 @@ export class PostgresSourcesStage4ContinuationStore implements SourcesStage4Cont
            JOIN evidence.indexing_results AS result
              ON result.indexing_result_id = continuation.indexing_result_id
           WHERE continuation.state IN ('PENDING', 'RETRYABLE_FAILED')
-            AND (continuation.next_attempt_at IS NULL OR continuation.next_attempt_at <= $1)
+            AND (continuation.next_attempt_at IS NULL OR continuation.next_attempt_at <= COALESCE($1::timestamptz,clock_timestamp()))
           ORDER BY COALESCE(continuation.next_attempt_at, continuation.created_at),
                    continuation.continuation_id
           FOR UPDATE OF continuation SKIP LOCKED
           LIMIT 1`,
-            [now],
+            [explicitNow ?? null],
           );
           const row = result.rows[0];
           if (!row) return { status: 'EMPTY' } as const;
+          const { now } = await executionClock(client, explicitNow);
           const updated = await client.query<{ fencing_token: string }>(
             `UPDATE evidence.stage4_continuations
             SET state = 'RUNNING', attempt_count = attempt_count + 1,
@@ -1178,8 +1198,8 @@ export class PostgresSourcesStage4ContinuationStore implements SourcesStage4Cont
               lease_expires_at = NULL, safe_failure_code = 'LEASE_EXPIRED',
               safe_failure_message = 'The Stage 4 continuation lease expired; outcome requires reconciliation.',
               updated_at = clock_timestamp()
-        WHERE state = 'RUNNING' AND lease_expires_at <= $1`,
-      [input?.now ?? nowIso()],
+        WHERE state = 'RUNNING' AND lease_expires_at <= COALESCE($1::timestamptz,clock_timestamp())`,
+      [input?.now ?? null],
     );
     return result.rowCount ?? 0;
   }

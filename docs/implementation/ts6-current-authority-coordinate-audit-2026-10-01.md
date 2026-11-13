@@ -123,3 +123,32 @@ Only the current v8 authority manifest, its four approved `covers[]` references,
 and regenerated `golden.v8.derived.json` changed. Frozen v2-v7 artifacts remain
 unchanged. Verification: `npm run ts6:v8:rebuild`, `npm run ts6:v8:check`,
 `npm run verify:ts6-c2`, and `npm run test:ts6-audit` (45/45).
+
+## 2026-11-13 Surfer v12 integration
+
+PR #400 introduced 27 safe-helper transaction sites and moved five inherited
+sites. Each inherited site was matched by file, symbol, method, primitive,
+classification, and reachability grade before remapping its existing
+regression relations.
+
+| Owner method | Previous line | Current line |
+| --- | ---: | ---: |
+| `PostgresAskAnswerExecutionRepository.transaction` | 2377 | 2400 |
+| `PostgresAskAnswerExecutionRepository.poolTransaction` | 3123 | 3146 |
+| `PostgresSourcesStage3ProgressRepository.claim` | 122 | 142 |
+| `PostgresSourcesStage3AtomicPersistence.persist` | 590 | 609 |
+| `PostgresSourcesStage4ContinuationStore.claimNext` | 995 | 1014 |
+
+The current inventory has 174 candidates, 160 transaction boundaries, and 21
+raw sites. Qualified scoring records 30 transaction boundaries, 106
+Port-inferred owners, 14 non-transaction sites, 24 test-only or dead sites,
+and zero unresolved sites. Explicit receiver types distinguish account
+readiness from the Fastify reply and VP budget methods with the same name.
+The Ask memory call uses an explicit guard, retaining its optional behavior
+while exposing the Port call to the existing scanner.
+
+The nine newly proven Surfer sites have approved evidence for account
+readiness, review queue enqueue and completion, history rollback, intake
+read and enqueue, row-store rollback, Source snapshot consistency, and
+cutover rollback. The current manifest and regenerated v8 lineage record
+these relationships. The v2–v7 frozen inputs and required CI gate are unchanged.

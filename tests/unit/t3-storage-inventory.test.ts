@@ -14,8 +14,8 @@ describe('T3 current storage inventory and preserved historical baseline', () =>
       'utf8',
     );
     const expected = parseT3ExpectedTables(register);
-    expect(expected.schemas).toHaveLength(31);
-    expect(expected.tables).toHaveLength(212);
+    expect(expected.schemas).toHaveLength(38);
+    expect(expected.tables).toHaveLength(246);
     const currentAdditions = [
       'ai.image_observation_executions',
       'source_product.url_refresh_jobs',
@@ -26,7 +26,15 @@ describe('T3 current storage inventory and preserved historical baseline', () =>
     expect(expected.tables.filter((table) => currentAdditions.includes(table))).toEqual(
       currentAdditions,
     );
-    expect(expected.tables.filter((table) => !currentAdditions.includes(table))).toHaveLength(207);
+    const surferTables = expected.tables.filter((table) =>
+      /^(?:surfer_|provider_account\.|frontend_ask\.surfer_)/u.test(table),
+    );
+    expect(surferTables).toHaveLength(34);
+    expect(
+      expected.tables.filter(
+        (table) => !currentAdditions.includes(table) && !surferTables.includes(table),
+      ),
+    ).toHaveLength(207);
     expect(register).toContain('migration 001–130의 207개 table');
     expect(register).toContain('`source_product.url_refresh_jobs`: D');
     expect(register).toContain('`vp.candidate_frontiers`와 `vp.candidate_frontier_members`: D+B');
@@ -58,7 +66,7 @@ describe('T3 current storage inventory and preserved historical baseline', () =>
   it('keeps the exact content-column inventory and additive migration non-destructive', async () => {
     const inventory = await readFile('docs/implementation/t3-content-column-inventory.tsv', 'utf8');
     const columns = parseT3ExpectedContentColumns(inventory);
-    expect(columns).toHaveLength(174);
+    expect(columns).toHaveLength(207);
     expect(columns).toContain('vp.relation_provider_calls.output_json\tjsonb');
     expect(columns).toContain(
       'project_admin.project_knowledge_reset_requests.impact_counts\tjsonb',

@@ -1,0 +1,24 @@
+{
+  "id": "provider.account-authority",
+  "version": "0.1.0",
+  "owner": "Provider Account Execution Authority",
+  "deployment": { "modes": ["in_process"] },
+  "dataOwnership": {
+    "owns": ["provider_account"],
+    "readsViaPorts": [
+      "SurferAccountExecutionAuthorityPort",
+      "GlobalRelationBudgetPort",
+      "SurferAccountCloseoutPort"
+    ],
+    "directSchemaAccess": false
+  },
+  "consumes": { "commands": [], "events": [] },
+  "produces": { "events": [], "handoffs": [] },
+  "provides": { "queries": [], "capabilities": [] },
+  "requires": { "capabilities": [] },
+  "security": {
+    "requiredContext": ["project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": { "canWriteCanonical": false, "canExecuteExternalAction": false }
+}

@@ -93,29 +93,32 @@ export class CredentialBackedAIProviderAdapter implements AIProviderAdapterPort 
     if (!captured)
       throw routerError('The pinned credential was not captured.', 'capture-credential');
     let used = false;
+    const generate = async (request: StructuredGenerationRequest, signal?: AbortSignal) => {
+      if (used || !captured) {
+        throw routerError('The captured credential has already been used.', 'capture-credential');
+      }
+      used = true;
+      const secret = captured;
+      captured = undefined;
+      try {
+        return await this.connectivity.generateStructured({
+          modelId: capturedIdentity.model,
+          apiKey: secret,
+          request,
+          ...(signal === undefined ? {} : { signal }),
+        });
+      } finally {
+        secret.fill(0);
+      }
+    };
     return {
       identity: capturedIdentity,
       discardCapturedCredential: () => {
         captured?.fill(0);
         captured = undefined;
       },
-      generateStructured: async (request) => {
-        if (used || !captured) {
-          throw routerError('The captured credential has already been used.', 'capture-credential');
-        }
-        used = true;
-        const secret = captured;
-        captured = undefined;
-        try {
-          return await this.connectivity.generateStructured({
-            modelId: capturedIdentity.model,
-            apiKey: secret,
-            request,
-          });
-        } finally {
-          secret.fill(0);
-        }
-      },
+      generateStructured: (request) => generate(request),
+      generateStructuredWithSignal: (request, signal) => generate(request, signal),
     };
   }
 

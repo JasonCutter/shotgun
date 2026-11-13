@@ -48,6 +48,7 @@ import {
 } from '../sources/source-intake-drafts.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
+import { SurferIntakePanel } from './surfer-intake-panel.js';
 
 const DEFAULT_QUERY: SourceLibraryQuery = {
   schemaVersion: '1.0.0',
@@ -804,6 +805,21 @@ export const SourcesWorkspace = () => {
       ) : null}
       <p className="eyebrow">{t('sources.eyebrow')}</p>
       <h1 tabIndex={-1}>{t('sources.title')}</h1>
+      {isActiveProjectOwner ? (
+        <SurferIntakePanel
+          key={`intake:${shell.principalId}:${shell.sessionId}:${projectId}:${shell.accessRevision}:${shell.policyContextRevision}`}
+          sourceLabels={
+            library.data?.projectId === projectId &&
+            library.data.principalId === shell.principalId &&
+            library.data.sessionId === shell.sessionId &&
+            !library.data.stale
+              ? Object.fromEntries(
+                  library.data.items.map((source) => [source.sourceId, source.label]),
+                )
+              : {}
+          }
+        />
+      ) : null}
 
       {showAddSource ? (
         <section className="action-card sources-intake" aria-labelledby="source-intake-heading">

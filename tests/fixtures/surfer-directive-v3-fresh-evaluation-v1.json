@@ -1,0 +1,146 @@
+{
+  "schema": "surfer-unlimited-v3-fresh-paired-v1",
+  "scope": "NEW_AUTHORED_PRE_EXECUTION_DIAGNOSTIC_NOT_POPULATION_CERTIFICATION",
+  "evaluationPolicy": "Both arms use the same eight Source documents and independent authored reference/core-span coverage. Every supported case stays in denominator, including invalid or abstained. V2 requires validating its complete envelope before clause comparison. No response-dependent changes.",
+  "armA": "surfer-source-clauses-flat-v1",
+  "armB": "surfer-directive-role-catalog-v3",
+  "cases": [
+    {
+      "id": "L01",
+      "text": "운전 규정: 온도가 38 °C 이상이면 냉각기 J72는 배출을 중단해야 한다.",
+      "entity": "J72",
+      "action": "배출을 중단해야 한다",
+      "operation": "배출을 중단",
+      "mode": "REQUIRED",
+      "value": true,
+      "condition": [
+        {
+          "quote": "온도가 38 °C 이상이면",
+          "number": "38 °C",
+          "comparison": "gte"
+        }
+      ],
+      "expectedState": "RESOLVED"
+    },
+    {
+      "id": "L02",
+      "text": "운전 규정: 승인 상태가 거짓이면 펌프 Q46은 흡입을 중단해서는 안 된다.",
+      "entity": "Q46",
+      "action": "흡입을 중단해서는 안 된다",
+      "operation": "흡입을 중단",
+      "mode": "PROHIBITED",
+      "value": false,
+      "condition": [
+        {
+          "quote": "승인 상태가 거짓이면",
+          "value": false
+        }
+      ],
+      "expectedState": "RESOLVED"
+    },
+    {
+      "id": "L03",
+      "text": "보고 규정: 위반 여부가 참이면 검사기 U83은 신고서를 제출해야 한다. 단, 모의 훈련이 참이면 제출 의무를 면제한다.",
+      "entity": "U83",
+      "action": "신고서를 제출해야 한다",
+      "operation": "신고서를 제출",
+      "mode": "REQUIRED",
+      "value": true,
+      "condition": [
+        {
+          "quote": "위반 여부가 참이면",
+          "value": true
+        }
+      ],
+      "exception": "모의 훈련이 참",
+      "expectedState": "RESOLVED"
+    },
+    {
+      "id": "L04",
+      "text": "저장 규정: 저장기 C29는 사본을 유지해야 한다. 단, 만료 승인이 참이면 유지 의무를 면제한다.",
+      "entity": "C29",
+      "action": "사본을 유지해야 한다",
+      "operation": "사본을 유지",
+      "mode": "REQUIRED",
+      "value": true,
+      "exception": "만료 승인이 참",
+      "expectedState": "RESOLVED"
+    },
+    {
+      "id": "L05",
+      "text": "안전 규정: 장애 감지가 참이거나 보호 상태가 거짓이면 승강기 B67은 운행을 재개해서는 안 된다.",
+      "entity": "B67",
+      "action": "운행을 재개해서는 안 된다",
+      "operation": "운행을 재개",
+      "mode": "PROHIBITED",
+      "value": false,
+      "join": "ANY",
+      "condition": [
+        {
+          "quote": "장애 감지가 참",
+          "value": true
+        },
+        {
+          "quote": "보호 상태가 거짓",
+          "value": false
+        }
+      ],
+      "expectedState": "RESOLVED"
+    },
+    {
+      "id": "L06",
+      "text": "충전 규정: 누적 충전량이 42 L 이상이거나 수동 종료가 참이면 충전기 R54는 주입을 중단해야 한다.",
+      "entity": "R54",
+      "action": "주입을 중단해야 한다",
+      "operation": "주입을 중단",
+      "mode": "REQUIRED",
+      "value": true,
+      "join": "ANY",
+      "condition": [
+        {
+          "quote": "누적 충전량이 42 L 이상",
+          "number": "42 L",
+          "comparison": "gte"
+        },
+        {
+          "quote": "수동 종료가 참",
+          "value": true
+        }
+      ],
+      "expectedState": "RESOLVED"
+    },
+    {
+      "id": "L07",
+      "text": "보존 규정: 2034-06-11부터 2034-06-15까지 두 끝 날짜를 포함한 기간에 저장함 G38은 검체를 보존해야 한다.",
+      "entity": "G38",
+      "action": "검체를 보존해야 한다",
+      "operation": "검체를 보존",
+      "mode": "REQUIRED",
+      "value": true,
+      "from": "2034-06-11",
+      "to": "2034-06-15",
+      "expectedState": "RESOLVED"
+    },
+    {
+      "id": "L08",
+      "text": "접근 규정: 검사 완료가 참이고 차단 상태가 거짓이면 출입기 H95는 문을 개방해야 한다.",
+      "entity": "H95",
+      "action": "문을 개방해야 한다",
+      "operation": "문을 개방",
+      "mode": "REQUIRED",
+      "value": true,
+      "join": "ALL",
+      "condition": [
+        {
+          "quote": "검사 완료가 참",
+          "value": true
+        },
+        {
+          "quote": "차단 상태가 거짓",
+          "value": false
+        }
+      ],
+      "expectedState": "RESOLVED"
+    }
+  ]
+}

@@ -3433,3 +3433,32 @@ tr.graph-item--discovery {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
+/* Source-bound memory questions share the existing Ask workspace. */
+.surfer-memory-panel {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+}
+.surfer-memory-panel label {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.75rem 0;
+}
+.surfer-memory-panel input,
+.surfer-memory-panel select {
+  max-width: 100%;
+  min-width: 0;
+  padding: 0.5rem;
+  font: inherit;
+}
+.surfer-memory-panel button {
+  margin: 0.25rem;
+}
+.surfer-memory-panel blockquote {
+  margin: 0.75rem 0;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 3px solid currentColor;
+  white-space: pre-wrap;
+}

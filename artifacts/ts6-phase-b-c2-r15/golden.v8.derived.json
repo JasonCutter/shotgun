@@ -3,7 +3,7 @@
   "baseSha": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
   "derivedFrom": {
     "parentArtifact": "artifacts/ts6-phase-b-c2-r15/approved-regression-relations.v8.json",
-    "parentSha256": "40c24beec4487399a1581e5e821e075c2e874f39ade3afc0b07de4af16722785",
+    "parentSha256": "aef4fe3de3a2e770bdcf31de4403b15c7cc71b41095e6bae62e757e54741f764",
     "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
     "authorityVersion": "ts6.phase-b.current-authority-manifest.v8"
   },
@@ -243,7 +243,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 5,
+      "legacyRecordedCallers": 11,
       "ackLossPolicy": {
         "kind": "OTHER_EXISTING_POLICY",
         "evidence": "existing manual transaction code"
@@ -269,7 +269,7 @@
         "status": "TEST_ONLY_OR_DEAD",
         "callers": []
       },
-      "legacyRecordedCallers": 5,
+      "legacyRecordedCallers": 12,
       "ackLossPolicy": {
         "kind": "OTHER_EXISTING_POLICY",
         "evidence": "existing manual transaction code"
@@ -497,6 +497,258 @@
         "status": "PORT_INFERRED",
         "callers": [
           {
+            "file": "adapters/surfer-document-memory/src/rule-chain.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 260,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-chain.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 294,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-chain.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 328,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-replacement.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 168,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-replacement.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 249,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-replacement.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 283,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-replacement.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 318,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/document-work.ts",
+            "symbol": "c.s.commit",
+            "callExpression": "c.s.commit(...)",
+            "callNeedle": "c.s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "field s of Context declared as SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 134,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/memory-refresh-work.ts",
+            "symbol": "c.s.commit",
+            "callExpression": "c.s.commit(...)",
+            "callNeedle": "c.s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "field s of Context declared as SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 115,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/routed-memory.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 67,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-learning/src/rule-chain-review.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 54,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-learning/src/rule-chain-review.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 116,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-learning/src/rule-chain-review.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 286,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-learning/src/rule-chain-review.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 320,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
             "file": "packages/connector-runtime/src/runtime.ts",
             "symbol": "state.ordering.commit",
             "callExpression": "state.ordering.commit(...)",
@@ -516,7 +768,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 2,
+      "legacyRecordedCallers": 29,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -696,7 +948,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 56,
+      "legacyRecordedCallers": 99,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -2095,7 +2347,7 @@
             "bindingPort": null,
             "bindingVia": "value of discoveryRuntimeRepository is the declared return type of a helper",
             "receiverType": "PostgresDiscoveryRuntimeRepository",
-            "line": 1199,
+            "line": 1342,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -2140,7 +2392,7 @@
             "bindingPort": null,
             "bindingVia": "value of discoveryRuntimeRepository is the declared return type of a helper",
             "receiverType": "PostgresDiscoveryRuntimeRepository",
-            "line": 1220,
+            "line": 1363,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -2380,7 +2632,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2377",
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2400",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "transaction",
@@ -2410,12 +2662,12 @@
             "bindingPort": "AskAnswerExecutionRepositoryPort",
             "bindingVia": "field repository of AskAnswerExecutionService declared as AskAnswerExecutionRepositoryPort",
             "receiverType": "AskAnswerExecutionRepositoryPort",
-            "line": 808,
+            "line": 824,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 56,
+      "legacyRecordedCallers": 99,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -2425,7 +2677,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123",
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "poolTransaction",
@@ -2455,7 +2707,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 640,
+            "line": 653,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2473,7 +2725,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1196,
+            "line": 1209,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2491,7 +2743,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1228,
+            "line": 1241,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2509,7 +2761,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1437,
+            "line": 1450,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2527,7 +2779,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1568,
+            "line": 1581,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2545,7 +2797,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1648,
+            "line": 1662,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2563,7 +2815,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1884,
+            "line": 1907,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2581,7 +2833,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 2436,
+            "line": 2459,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2599,7 +2851,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 2635,
+            "line": 2658,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2617,7 +2869,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 2657,
+            "line": 2680,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -2667,7 +2919,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 56,
+      "legacyRecordedCallers": 99,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -3054,7 +3306,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 17,
+      "legacyRecordedCallers": 28,
       "ackLossPolicy": {
         "kind": "EXACT_READBACK",
         "evidence": "same command_id + COMPLETED + SUCCEEDED + exact produced_resources"
@@ -3513,7 +3765,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 56,
+      "legacyRecordedCallers": 99,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -3850,7 +4102,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 56,
+      "legacyRecordedCallers": 99,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -4133,7 +4385,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2290,
+            "line": 2295,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -4151,12 +4403,12 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2298,
+            "line": 2303,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 56,
+      "legacyRecordedCallers": 99,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -4405,7 +4657,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 56,
+      "legacyRecordedCallers": 99,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -4558,7 +4810,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 3,
+      "legacyRecordedCallers": 6,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -4598,7 +4850,7 @@
             "bindingPort": null,
             "bindingVia": "value of sourcesProductService is the declared return type of a helper",
             "receiverType": "PostgresSourcesProductService",
-            "line": 1688,
+            "line": 1842,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -5079,7 +5331,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 56,
+      "legacyRecordedCallers": 99,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -5215,97 +5467,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122",
-      "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
-      "symbol": "PostgresSourcesStage3ProgressRepository",
-      "method": "claim",
-      "ownership": {
-        "kind": "SAFE_HELPER",
-        "primitive": "withSafePostgresTransaction"
-      },
-      "sourceEvidence": {
-        "declarationNeedle": "async claim(input: {",
-        "transactionNeedle": "withSafePostgresTransaction"
-      },
-      "productionReachability": {
-        "status": "PORT_INFERRED",
-        "callers": [
-          {
-            "file": "adapters/sources-stage3-pipeline/src/index.ts",
-            "symbol": "this.deps.progress!.claim",
-            "callExpression": "this.deps.progress!.claim(...)",
-            "callNeedle": "this.deps.progress!.claim(",
-            "bindingEvidence": [
-              "async claim(input: {"
-            ],
-            "regressionEvidenceIds": [
-              "test:tests/database/runtime-data-integrity-wp04-schema.test.ts:rejects malformed lease inputs before opening a PostgreSQL transaction"
-            ],
-            "bindingKind": "SOLE",
-            "bindingPort": "SourcesStage3ProgressPort",
-            "bindingVia": "field progress of SharedSourcesStage3PipelineDependencies declared as SourcesStage3ProgressPort",
-            "receiverType": "SourcesStage3ProgressPort",
-            "line": 110,
-            "evidenceGrade": "PORT_INFERRED"
-          }
-        ]
-      },
-      "legacyRecordedCallers": 5,
-      "ackLossPolicy": {
-        "kind": "PROPAGATE_UNKNOWN",
-        "evidence": "existing safe transaction helper outcome contract"
-      },
-      "regressionEvidenceIds": [
-        "test:tests/database/runtime-data-integrity-wp04-schema.test.ts:rejects malformed lease inputs before opening a PostgreSQL transaction"
-      ]
-    },
-    {
-      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:590",
-      "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
-      "symbol": "PostgresSourcesStage3AtomicPersistence",
-      "method": "persist",
-      "ownership": {
-        "kind": "SAFE_HELPER",
-        "primitive": "withSafePostgresTransaction"
-      },
-      "sourceEvidence": {
-        "declarationNeedle": "async persist(input: {",
-        "transactionNeedle": "withSafePostgresTransaction"
-      },
-      "productionReachability": {
-        "status": "PORT_INFERRED",
-        "callers": [
-          {
-            "file": "adapters/sources-stage3-pipeline/src/index.ts",
-            "symbol": "this.deps.atomicPersistence.persist",
-            "callExpression": "this.deps.atomicPersistence.persist(...)",
-            "callNeedle": "this.deps.atomicPersistence.persist(",
-            "bindingEvidence": [
-              "async persist(input: {"
-            ],
-            "regressionEvidenceIds": [
-              "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 3 atomic persistence: reconciles all authorities after ACK loss"
-            ],
-            "bindingKind": "SOLE",
-            "bindingPort": "SourcesStage3AtomicPersistencePort",
-            "bindingVia": "field atomicPersistence of SharedSourcesStage3PipelineDependencies declared as SourcesStage3AtomicPersistencePort",
-            "receiverType": "SourcesStage3AtomicPersistencePort",
-            "line": 229,
-            "evidenceGrade": "PORT_INFERRED"
-          }
-        ]
-      },
-      "legacyRecordedCallers": 3,
-      "ackLossPolicy": {
-        "kind": "PROPAGATE_UNKNOWN",
-        "evidence": "existing safe transaction helper outcome contract"
-      },
-      "regressionEvidenceIds": [
-        "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 3 atomic persistence: reconciles all authorities after ACK loss"
-      ]
-    },
-    {
-      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:995",
+      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:1014",
       "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
       "symbol": "PostgresSourcesStage4ContinuationStore",
       "method": "claimNext",
@@ -5347,6 +5509,96 @@
       },
       "regressionEvidenceIds": [
         "test:tests/database/runtime-data-integrity-wp04-schema.test.ts:rejects malformed lease inputs before opening a PostgreSQL transaction"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:142",
+      "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
+      "symbol": "PostgresSourcesStage3ProgressRepository",
+      "method": "claim",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async claim(input: {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "adapters/sources-stage3-pipeline/src/index.ts",
+            "symbol": "this.deps.progress!.claim",
+            "callExpression": "this.deps.progress!.claim(...)",
+            "callNeedle": "this.deps.progress!.claim(",
+            "bindingEvidence": [
+              "async claim(input: {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/runtime-data-integrity-wp04-schema.test.ts:rejects malformed lease inputs before opening a PostgreSQL transaction"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SourcesStage3ProgressPort",
+            "bindingVia": "field progress of SharedSourcesStage3PipelineDependencies declared as SourcesStage3ProgressPort",
+            "receiverType": "SourcesStage3ProgressPort",
+            "line": 110,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 12,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/runtime-data-integrity-wp04-schema.test.ts:rejects malformed lease inputs before opening a PostgreSQL transaction"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:609",
+      "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
+      "symbol": "PostgresSourcesStage3AtomicPersistence",
+      "method": "persist",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async persist(input: {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "adapters/sources-stage3-pipeline/src/index.ts",
+            "symbol": "this.deps.atomicPersistence.persist",
+            "callExpression": "this.deps.atomicPersistence.persist(...)",
+            "callNeedle": "this.deps.atomicPersistence.persist(",
+            "bindingEvidence": [
+              "async persist(input: {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 3 atomic persistence: reconciles all authorities after ACK loss"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SourcesStage3AtomicPersistencePort",
+            "bindingVia": "field atomicPersistence of SharedSourcesStage3PipelineDependencies declared as SourcesStage3AtomicPersistencePort",
+            "receiverType": "SourcesStage3AtomicPersistencePort",
+            "line": 229,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 4,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 3 atomic persistence: reconciles all authorities after ACK loss"
       ]
     },
     {
@@ -6004,6 +6256,186 @@
         "status": "PORT_INFERRED",
         "callers": [
           {
+            "file": "adapters/surfer-document-memory/src/rule-chain.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 260,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-chain.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 294,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-chain.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 328,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-replacement.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 168,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-replacement.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 249,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-replacement.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 283,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-document-memory/src/rule-replacement.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 318,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/document-work.ts",
+            "symbol": "c.s.commit",
+            "callExpression": "c.s.commit(...)",
+            "callNeedle": "c.s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "field s of Context declared as SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 134,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/memory-refresh-work.ts",
+            "symbol": "c.s.commit",
+            "callExpression": "c.s.commit(...)",
+            "callNeedle": "c.s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "field s of Context declared as SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 115,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/routed-memory.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "file-scope declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 67,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
             "file": "modules/canonical-knowledge/src/index.ts",
             "symbol": "repository.commit",
             "callExpression": "repository.commit(...)",
@@ -6020,10 +6452,82 @@
             "receiverType": "CanonicalKnowledgeRepositoryPort",
             "line": 587,
             "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-learning/src/rule-chain-review.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 54,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-learning/src/rule-chain-review.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 116,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-learning/src/rule-chain-review.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 286,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-learning/src/rule-chain-review.ts",
+            "symbol": "s.commit",
+            "callExpression": "s.commit(...)",
+            "callNeedle": "s.commit(",
+            "bindingEvidence": [
+              "async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferScopedRuleMemorySession",
+            "bindingVia": "declaration of s annotated SurferScopedRuleMemorySession",
+            "receiverType": "SurferScopedRuleMemorySession",
+            "line": 320,
+            "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 2,
+      "legacyRecordedCallers": 29,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -6248,7 +6752,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 56,
+      "legacyRecordedCallers": 99,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -7008,7 +7512,7 @@
             "bindingPort": null,
             "bindingVia": "value of knowledgeResetPersistence is the declared return type of a helper",
             "receiverType": "PostgresKnowledgeResetPersistence",
-            "line": 1417,
+            "line": 1560,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -7065,6 +7569,1848 @@
       },
       "regressionEvidenceIds": [
         "test:tests/database/source-refresh.database.test.ts:claims one job across independent connections and fences duplicate activation:PostgresSourceRefreshStore.claimNext"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-account-authority-postgres/src/bootstrap.ts:102",
+      "file": "adapters/surfer-account-authority-postgres/src/bootstrap.ts",
+      "symbol": "PostgresSurferAccountBootstrap",
+      "method": "inspect",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async inspect(input: unknown) {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "TEST_ONLY_OR_DEAD",
+        "callers": []
+      },
+      "legacyRecordedCallers": 5,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-account-authority-postgres/src/bootstrap.ts:117",
+      "file": "adapters/surfer-account-authority-postgres/src/bootstrap.ts",
+      "symbol": "PostgresSurferAccountBootstrap",
+      "method": "apply",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async apply(input: SurferAccountBootstrapCommand) {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "modules/surfer-execution/src/runtime-controls.ts",
+            "symbol": "port.apply",
+            "callExpression": "port.apply(...)",
+            "callNeedle": "port.apply(",
+            "bindingEvidence": [
+              "async apply(input: SurferAccountBootstrapCommand) {"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferAccountBootstrapPort",
+            "bindingVia": "declaration of port annotated SurferAccountBootstrapPort",
+            "receiverType": "SurferAccountBootstrapPort",
+            "line": 66,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 5,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-account-authority-postgres/src/closeout.ts:18",
+      "file": "adapters/surfer-account-authority-postgres/src/closeout.ts",
+      "symbol": "PostgresSurferAccountCloseout",
+      "method": "close",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async close(input: SurferAccountCloseoutRequest): Promise<SurferAccountCloseoutReceipt> {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "modules/surfer-execution/src/runtime-controls.ts",
+            "symbol": "port.close",
+            "callExpression": "port.close(...)",
+            "callNeedle": "port.close(",
+            "bindingEvidence": [
+              "async close(input: SurferAccountCloseoutRequest): Promise<SurferAccountCloseoutReceipt> {"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferAccountCloseoutPort",
+            "bindingVia": "declaration of port annotated SurferAccountCloseoutPort",
+            "receiverType": "SurferAccountCloseoutPort",
+            "line": 32,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 21,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:107",
+      "file": "adapters/surfer-account-authority-postgres/src/index.ts",
+      "symbol": "PostgresSurferAccountAuthority",
+      "method": "status",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "status(): Promise<SurferAccountAuthorityStatus> {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "TEST_ONLY_OR_DEAD",
+        "callers": []
+      },
+      "legacyRecordedCallers": 6,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:127",
+      "file": "adapters/surfer-account-authority-postgres/src/index.ts",
+      "symbol": "PostgresSurferAccountAuthority",
+      "method": "isCurrent",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "isCurrent(projectId: string): Promise<boolean> {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "assemblies/shotgun-app/src/surfer-account-runtime.ts",
+            "symbol": "authority.isCurrent",
+            "callExpression": "authority.isCurrent(...)",
+            "callNeedle": "authority.isCurrent(",
+            "bindingEvidence": [
+              "isCurrent(projectId: string): Promise<boolean> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-app-runtime.database.test.ts:launches v12 and persists separate setting units and scope exceptions"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "file-scope declaration of authority annotated PostgresSurferAccountAuthority",
+            "receiverType": "PostgresSurferAccountAuthority",
+            "line": 129,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 1,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/surfer-app-runtime.database.test.ts:launches v12 and persists separate setting units and scope exceptions"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:41",
+      "file": "adapters/surfer-account-authority-postgres/src/index.ts",
+      "symbol": "PostgresSurferAccountAuthority",
+      "method": "authorize",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async authorize(input: SurferProviderBinding): Promise<SurferAccountReceipt> {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/provider.ts",
+            "symbol": "this.authority.authorize",
+            "callExpression": "this.authority.authorize(...)",
+            "callNeedle": "this.authority.authorize(",
+            "bindingEvidence": [
+              "async authorize(input: SurferProviderBinding): Promise<SurferAccountReceipt> {"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferAccountExecutionAuthorityPort",
+            "bindingVia": "field authority of ShotgunSurferProviderGateway declared as SurferAccountExecutionAuthorityPort",
+            "receiverType": "SurferAccountExecutionAuthorityPort",
+            "line": 111,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/frontend-sources-write/src/source-refresh.ts",
+            "symbol": "this.authorization.authorize",
+            "callExpression": "this.authorization.authorize(...)",
+            "callNeedle": "this.authorization.authorize(",
+            "bindingEvidence": [
+              "async authorize(input: SurferProviderBinding): Promise<SurferAccountReceipt> {"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SourceRefreshAuthorizationPort",
+            "bindingVia": "field authorization of SourceRefreshCoordinator declared as SourceRefreshAuthorizationPort",
+            "receiverType": "SourceRefreshAuthorizationPort",
+            "line": 216,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 15,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:85",
+      "file": "adapters/surfer-account-authority-postgres/src/index.ts",
+      "symbol": "PostgresSurferAccountAuthority",
+      "method": "settle",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async settle(",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/provider.ts",
+            "symbol": "this.authority.settle",
+            "callExpression": "this.authority.settle(...)",
+            "callNeedle": "this.authority.settle(",
+            "bindingEvidence": [
+              "async settle("
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferAccountExecutionAuthorityPort",
+            "bindingVia": "field authority of ShotgunSurferProviderGateway declared as SurferAccountExecutionAuthorityPort",
+            "receiverType": "SurferAccountExecutionAuthorityPort",
+            "line": 153,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 6,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-account-authority-postgres/src/registration.ts:103",
+      "file": "adapters/surfer-account-authority-postgres/src/registration.ts",
+      "symbol": "PostgresSurferRegistrationAdmin",
+      "method": "apply",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async apply(input: SurferRegistrationCommand) {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "modules/surfer-execution/src/runtime-controls.ts",
+            "symbol": "port.apply",
+            "callExpression": "port.apply(...)",
+            "callNeedle": "port.apply(",
+            "bindingEvidence": [
+              "async apply(input: SurferRegistrationCommand) {"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferRegistrationAdminPort",
+            "bindingVia": "declaration of port annotated SurferRegistrationAdminPort",
+            "receiverType": "SurferRegistrationAdminPort",
+            "line": 57,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 5,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-account-authority-postgres/src/registration.ts:73",
+      "file": "adapters/surfer-account-authority-postgres/src/registration.ts",
+      "symbol": "PostgresSurferRegistrationAdmin",
+      "method": "inspect",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async inspect(input: unknown, projectId: string) {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "TEST_ONLY_OR_DEAD",
+        "callers": []
+      },
+      "legacyRecordedCallers": 5,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-account-authority-postgres/src/root-renewal.ts:134",
+      "file": "adapters/surfer-account-authority-postgres/src/root-renewal.ts",
+      "symbol": "PostgresSurferRootRenewal",
+      "method": "apply",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async apply(input: SurferRootRenewalCommand) {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "modules/surfer-execution/src/runtime-controls.ts",
+            "symbol": "port.apply",
+            "callExpression": "port.apply(...)",
+            "callNeedle": "port.apply(",
+            "bindingEvidence": [
+              "async apply(input: SurferRootRenewalCommand) {"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferRootRenewalPort",
+            "bindingVia": "declaration of port annotated SurferRootRenewalPort",
+            "receiverType": "SurferRootRenewalPort",
+            "line": 75,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 5,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-account-authority-postgres/src/root-renewal.ts:81",
+      "file": "adapters/surfer-account-authority-postgres/src/root-renewal.ts",
+      "symbol": "PostgresSurferRootRenewal",
+      "method": "inspect",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async inspect(input: unknown) {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "TEST_ONLY_OR_DEAD",
+        "callers": []
+      },
+      "legacyRecordedCallers": 5,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:478",
+      "file": "adapters/surfer-ask-memory-postgres/src/index.ts",
+      "symbol": "PostgresSurferAskMemory",
+      "method": "prepare",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async prepare(scope: AskExecutionScope, claimed: AskClaimedExecution) {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "modules/frontend-ask-execution/src/index.ts",
+            "symbol": "this.memoryContext.prepare",
+            "callExpression": "this.memoryContext.prepare(...)",
+            "callNeedle": "this.memoryContext.prepare(",
+            "bindingEvidence": [
+              "async prepare(scope: AskExecutionScope, claimed: AskClaimedExecution) {"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "AskMemoryContextPort",
+            "bindingVia": "field memoryContext of AskAnswerExecutionService declared as AskMemoryContextPort",
+            "receiverType": "AskMemoryContextPort",
+            "line": 1099,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 9,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:117",
+      "file": "adapters/surfer-ask-memory-postgres/src/meaning-queue.ts",
+      "symbol": "PostgresSurferMeaningQueue",
+      "method": "claim",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async claim(i: SurferMeaningQueueIdentity): Promise<SurferMeaningQueueClaim | null> {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "modules/surfer-execution/src/meaning-queue.ts",
+            "symbol": "this.queue.claim",
+            "callExpression": "this.queue.claim(...)",
+            "callNeedle": "this.queue.claim(",
+            "bindingEvidence": [
+              "async claim(i: SurferMeaningQueueIdentity): Promise<SurferMeaningQueueClaim | null> {"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferMeaningQueuePort",
+            "bindingVia": "field queue of SurferMeaningQueueWorker declared as SurferMeaningQueuePort",
+            "receiverType": "SurferMeaningQueuePort",
+            "line": 46,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 12,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:182",
+      "file": "adapters/surfer-ask-memory-postgres/src/meaning-queue.ts",
+      "symbol": "PostgresSurferMeaningQueue",
+      "method": "finish",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "private async finish(",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "adapters/surfer-ask-memory-postgres/src/meaning-queue.ts",
+            "symbol": "this.finish",
+            "callExpression": "this.finish(...)",
+            "callNeedle": "this.finish(",
+            "bindingEvidence": [
+              "private async finish("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-routing.database.test.ts:rolls back final queue ack and resumes the stored preparation/checkpoint through a new runtime-role connection"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferMeaningQueue",
+            "receiverType": "PostgresSurferMeaningQueue",
+            "line": 222,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-ask-memory-postgres/src/meaning-queue.ts",
+            "symbol": "this.finish",
+            "callExpression": "this.finish(...)",
+            "callNeedle": "this.finish(",
+            "bindingEvidence": [
+              "private async finish("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-routing.database.test.ts:rolls back final queue ack and resumes the stored preparation/checkpoint through a new runtime-role connection"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferMeaningQueue",
+            "receiverType": "PostgresSurferMeaningQueue",
+            "line": 226,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 12,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/surfer-routing.database.test.ts:rolls back final queue ack and resumes the stored preparation/checkpoint through a new runtime-role connection"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:75",
+      "file": "adapters/surfer-ask-memory-postgres/src/meaning-queue.ts",
+      "symbol": "PostgresSurferMeaningQueue",
+      "method": "enqueue",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async enqueue(i: SurferMeaningQueueIdentity, input: SurferMeaningVerificationWork) {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "assemblies/shotgun-app/src/surfer-meaning-runtime.ts",
+            "symbol": "queue.enqueue",
+            "callExpression": "queue.enqueue(...)",
+            "callNeedle": "queue.enqueue(",
+            "bindingEvidence": [
+              "async enqueue(i: SurferMeaningQueueIdentity, input: SurferMeaningVerificationWork) {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-routing.database.test.ts:deduplicates enqueue without replacing the original preparation or reactivating completed work"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "value of queue is the declared return type of a helper",
+            "receiverType": "PostgresSurferMeaningQueue",
+            "line": 103,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 4,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/surfer-routing.database.test.ts:deduplicates enqueue without replacing the original preparation or reactivating completed work"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-binding-postgres/src/index.ts:59",
+      "file": "adapters/surfer-binding-postgres/src/index.ts",
+      "symbol": "PostgresSurferBindingStoreV2",
+      "method": "transaction",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "packages/contracts/src/surfer-source-binding-v2.ts",
+            "symbol": "store.transaction",
+            "callExpression": "store.transaction(...)",
+            "callNeedle": "store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferBindingStorePortV2",
+            "bindingVia": "declaration of store annotated SurferBindingStorePortV2",
+            "receiverType": "SurferBindingStorePortV2",
+            "line": 68,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 99,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-execution-postgres/src/index.ts:16",
+      "file": "adapters/surfer-execution-postgres/src/index.ts",
+      "symbol": "PostgresSurferExecutionStore",
+      "method": "transaction",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "modules/surfer-execution/src/index.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferExecutionStorePort",
+            "bindingVia": "field store of SurferExecutionLedger declared as SurferExecutionStorePort",
+            "receiverType": "SurferExecutionStorePort",
+            "line": 60,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 99,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-history-postgres/src/index.ts:49",
+      "file": "adapters/surfer-history-postgres/src/index.ts",
+      "symbol": "PostgresSurferHistoryArchive",
+      "method": "tx",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "return this.tx('history-begin', async (client) => {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "adapters/surfer-history-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx('history-begin', async (client) => {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-history.database.test.ts:rolls back a mid-batch SQL failure with no row or cursor residue"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferHistoryArchive",
+            "receiverType": "PostgresSurferHistoryArchive",
+            "line": 117,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-history-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx('history-begin', async (client) => {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-history.database.test.ts:rolls back a mid-batch SQL failure with no row or cursor residue"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferHistoryArchive",
+            "receiverType": "PostgresSurferHistoryArchive",
+            "line": 137,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-history-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx('history-begin', async (client) => {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-history.database.test.ts:rolls back a mid-batch SQL failure with no row or cursor residue"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferHistoryArchive",
+            "receiverType": "PostgresSurferHistoryArchive",
+            "line": 195,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-history-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx('history-begin', async (client) => {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-history.database.test.ts:rolls back a mid-batch SQL failure with no row or cursor residue"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferHistoryArchive",
+            "receiverType": "PostgresSurferHistoryArchive",
+            "line": 222,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-history-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx('history-begin', async (client) => {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-history.database.test.ts:rolls back a mid-batch SQL failure with no row or cursor residue"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferHistoryArchive",
+            "receiverType": "PostgresSurferHistoryArchive",
+            "line": 236,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 30,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/surfer-history.database.test.ts:rolls back a mid-batch SQL failure with no row or cursor residue"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-intake-postgres/src/index.ts:111",
+      "file": "adapters/surfer-intake-postgres/src/index.ts",
+      "symbol": "PostgresSurferIntakeInbox",
+      "method": "list",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async list(projectId: string, sourceIds: readonly string[], cursor: SurferIntakeCursor | null) {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "adapters/frontend-review-in-memory/src/index.ts",
+            "symbol": "this.reader.list",
+            "callExpression": "this.reader.list(...)",
+            "callNeedle": "this.reader.list(",
+            "bindingEvidence": [
+              "async list(projectId: string, sourceIds: readonly string[], cursor: SurferIntakeCursor | null) {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-intake.database.test.ts:uses read-only status queries and refuses a permission change between metadata read and response"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "ReviewDiscoveryCandidateReader",
+            "bindingVia": "field reader of DiscoveryCandidateReviewTargetAdapter declared as ReviewDiscoveryCandidateReader",
+            "receiverType": "ReviewDiscoveryCandidateReader",
+            "line": 1109,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/frontend-review-in-memory/src/index.ts",
+            "symbol": "this.reader.list",
+            "callExpression": "this.reader.list(...)",
+            "callNeedle": "this.reader.list(",
+            "bindingEvidence": [
+              "async list(projectId: string, sourceIds: readonly string[], cursor: SurferIntakeCursor | null) {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-intake.database.test.ts:uses read-only status queries and refuses a permission change between metadata read and response"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "ReviewUserDirectiveReader",
+            "bindingVia": "field reader of UserDirectiveReviewTargetAdapter declared as ReviewUserDirectiveReader",
+            "receiverType": "ReviewUserDirectiveReader",
+            "line": 1531,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "assemblies/shotgun-app/src/surfer-runtime.ts",
+            "symbol": "inbox.list",
+            "callExpression": "inbox.list(...)",
+            "callNeedle": "inbox.list(",
+            "bindingEvidence": [
+              "async list(projectId: string, sourceIds: readonly string[], cursor: SurferIntakeCursor | null) {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-intake.database.test.ts:uses read-only status queries and refuses a permission change between metadata read and response"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "value of inbox is the declared return type of a helper",
+            "receiverType": "PostgresSurferIntakeInbox",
+            "line": 185,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 12,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/surfer-intake.database.test.ts:uses read-only status queries and refuses a permission change between metadata read and response"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-intake-postgres/src/index.ts:153",
+      "file": "adapters/surfer-intake-postgres/src/index.ts",
+      "symbol": "PostgresSurferIntakeInbox",
+      "method": "claim",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async claim(",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "adapters/surfer-document-memory/src/intake.ts",
+            "symbol": "this.inbox.claim",
+            "callExpression": "this.inbox.claim(...)",
+            "callNeedle": "this.inbox.claim(",
+            "bindingEvidence": [
+              "async claim("
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferIntakeInboxPort",
+            "bindingVia": "field inbox of SurferIntakeWorker declared as SurferIntakeInboxPort",
+            "receiverType": "SurferIntakeInboxPort",
+            "line": 37,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 12,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-intake-postgres/src/index.ts:47",
+      "file": "adapters/surfer-intake-postgres/src/index.ts",
+      "symbol": "PostgresSurferIntakeInbox",
+      "method": "enqueue",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async enqueue(input: unknown) {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "assemblies/shotgun-app/src/surfer-runtime.ts",
+            "symbol": "inbox.enqueue",
+            "callExpression": "inbox.enqueue(...)",
+            "callNeedle": "inbox.enqueue(",
+            "bindingEvidence": [
+              "async enqueue(input: unknown) {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-intake.database.test.ts:deduplicates concurrent delivery and preserves the original event and transition identity"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "value of inbox is the declared return type of a helper",
+            "receiverType": "PostgresSurferIntakeInbox",
+            "line": 179,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 4,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/surfer-intake.database.test.ts:deduplicates concurrent delivery and preserves the original event and transition identity"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-knowledge-postgres/src/index.ts:15",
+      "file": "adapters/surfer-knowledge-postgres/src/index.ts",
+      "symbol": "PostgresSurferKnowledgeStore",
+      "method": "transaction",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/index.ts",
+            "symbol": "s.store.transaction",
+            "callExpression": "s.store.transaction(...)",
+            "callNeedle": "s.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferKnowledgeStorePort",
+            "bindingVia": "field store of SurferSourceSession declared as SurferKnowledgeStorePort",
+            "receiverType": "SurferKnowledgeStorePort",
+            "line": 36,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/index.ts",
+            "symbol": "s.store.transaction",
+            "callExpression": "s.store.transaction(...)",
+            "callNeedle": "s.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferKnowledgeStorePort",
+            "bindingVia": "field store of SurferSourceSession declared as SurferKnowledgeStorePort",
+            "receiverType": "SurferKnowledgeStorePort",
+            "line": 82,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/index.ts",
+            "symbol": "s.store.transaction",
+            "callExpression": "s.store.transaction(...)",
+            "callNeedle": "s.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferKnowledgeStorePort",
+            "bindingVia": "field store of SurferSourceSession declared as SurferKnowledgeStorePort",
+            "receiverType": "SurferKnowledgeStorePort",
+            "line": 110,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/index.ts",
+            "symbol": "s.store.transaction",
+            "callExpression": "s.store.transaction(...)",
+            "callNeedle": "s.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferKnowledgeStorePort",
+            "bindingVia": "field store of SurferSourceSession declared as SurferKnowledgeStorePort",
+            "receiverType": "SurferKnowledgeStorePort",
+            "line": 248,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/index.ts",
+            "symbol": "s.store.transaction",
+            "callExpression": "s.store.transaction(...)",
+            "callNeedle": "s.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferKnowledgeStorePort",
+            "bindingVia": "field store of SurferSourceSession declared as SurferKnowledgeStorePort",
+            "receiverType": "SurferKnowledgeStorePort",
+            "line": 253,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/index.ts",
+            "symbol": "s.store.transaction",
+            "callExpression": "s.store.transaction(...)",
+            "callNeedle": "s.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferKnowledgeStorePort",
+            "bindingVia": "field store of SurferSourceSession declared as SurferKnowledgeStorePort",
+            "receiverType": "SurferKnowledgeStorePort",
+            "line": 270,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-core/src/index.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferKnowledgeStorePort",
+            "bindingVia": "field store of SurferKnowledgeService declared as SurferKnowledgeStorePort",
+            "receiverType": "SurferKnowledgeStorePort",
+            "line": 508,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "packages/contracts/src/surfer-knowledge.ts",
+            "symbol": "store.transaction",
+            "callExpression": "store.transaction(...)",
+            "callNeedle": "store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferKnowledgeStorePort",
+            "bindingVia": "declaration of store annotated SurferKnowledgeStorePort",
+            "receiverType": "SurferKnowledgeStorePort",
+            "line": 159,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 99,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-knowledge-rows-postgres/src/index.ts:152",
+      "file": "adapters/surfer-knowledge-rows-postgres/src/index.ts",
+      "symbol": "PostgresSurferKnowledgeRows",
+      "method": "tx",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "return this.tx(true, async (_client, _context, m) => m);",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "adapters/surfer-knowledge-rows-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx(true, async (_client, _context, m) => m);"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferKnowledgeRows",
+            "receiverType": "PostgresSurferKnowledgeRows",
+            "line": 159,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-knowledge-rows-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx(true, async (_client, _context, m) => m);"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferKnowledgeRows",
+            "receiverType": "PostgresSurferKnowledgeRows",
+            "line": 163,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-knowledge-rows-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx(true, async (_client, _context, m) => m);"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferKnowledgeRows",
+            "receiverType": "PostgresSurferKnowledgeRows",
+            "line": 180,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-knowledge-rows-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx(true, async (_client, _context, m) => m);"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferKnowledgeRows",
+            "receiverType": "PostgresSurferKnowledgeRows",
+            "line": 186,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-knowledge-rows-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx(true, async (_client, _context, m) => m);"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferKnowledgeRows",
+            "receiverType": "PostgresSurferKnowledgeRows",
+            "line": 189,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-knowledge-rows-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx(true, async (_client, _context, m) => m);"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferKnowledgeRows",
+            "receiverType": "PostgresSurferKnowledgeRows",
+            "line": 195,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-knowledge-rows-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx(true, async (_client, _context, m) => m);"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferKnowledgeRows",
+            "receiverType": "PostgresSurferKnowledgeRows",
+            "line": 424,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-knowledge-rows-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx(true, async (_client, _context, m) => m);"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferKnowledgeRows",
+            "receiverType": "PostgresSurferKnowledgeRows",
+            "line": 493,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-knowledge-rows-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx(true, async (_client, _context, m) => m);"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferKnowledgeRows",
+            "receiverType": "PostgresSurferKnowledgeRows",
+            "line": 530,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 30,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-semantic-run-postgres/src/index.ts:14",
+      "file": "adapters/surfer-semantic-run-postgres/src/index.ts",
+      "symbol": "PostgresSurferSemanticRunStore",
+      "method": "transaction",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/model-inspection.ts",
+            "symbol": "this.journal.transaction",
+            "callExpression": "this.journal.transaction(...)",
+            "callNeedle": "this.journal.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field journal of ShotgunSurferModelInspection declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 97,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/model-inspection.ts",
+            "symbol": "this.journal.transaction",
+            "callExpression": "this.journal.transaction(...)",
+            "callNeedle": "this.journal.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field journal of ShotgunSurferModelInspection declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 163,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/surfer-shotgun-bridge/src/model-inspection.ts",
+            "symbol": "this.journal.transaction",
+            "callExpression": "this.journal.transaction(...)",
+            "callNeedle": "this.journal.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field journal of ShotgunSurferModelInspection declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 172,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 184,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 192,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 213,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 222,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 227,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 248,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 263,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 292,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 315,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 318,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 322,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "modules/surfer-execution/src/semantic-runner.ts",
+            "symbol": "this.store.transaction",
+            "callExpression": "this.store.transaction(...)",
+            "callNeedle": "this.store.transaction(",
+            "bindingEvidence": [
+              "import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "SurferSemanticRunStorePort",
+            "bindingVia": "field store of SurferSemanticBatchRunner declared as SurferSemanticRunStorePort",
+            "receiverType": "SurferSemanticRunStorePort",
+            "line": 350,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 99,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-shotgun-source-postgres/src/index.ts:254",
+      "file": "adapters/surfer-shotgun-source-postgres/src/index.ts",
+      "symbol": "PostgresSurferSourceSession",
+      "method": "openSnapshot",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "return this.openSnapshot(",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "adapters/surfer-shotgun-source-postgres/src/index.ts",
+            "symbol": "this.openSnapshot",
+            "callExpression": "this.openSnapshot(...)",
+            "callNeedle": "this.openSnapshot(",
+            "bindingEvidence": [
+              "return this.openSnapshot("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-source-v2.database.test.ts:keeps coherent MVCC content proofs and rejects escaped/unawaited v2 capabilities"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferSourceSession",
+            "receiverType": "PostgresSurferSourceSession",
+            "line": 145,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-shotgun-source-postgres/src/index.ts",
+            "symbol": "this.openSnapshot",
+            "callExpression": "this.openSnapshot(...)",
+            "callNeedle": "this.openSnapshot(",
+            "bindingEvidence": [
+              "return this.openSnapshot("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-source-v2.database.test.ts:keeps coherent MVCC content proofs and rejects escaped/unawaited v2 capabilities"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferSourceSession",
+            "receiverType": "PostgresSurferSourceSession",
+            "line": 158,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-shotgun-source-postgres/src/index.ts",
+            "symbol": "this.openSnapshot",
+            "callExpression": "this.openSnapshot(...)",
+            "callNeedle": "this.openSnapshot(",
+            "bindingEvidence": [
+              "return this.openSnapshot("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-source-v2.database.test.ts:keeps coherent MVCC content proofs and rejects escaped/unawaited v2 capabilities"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferSourceSession",
+            "receiverType": "PostgresSurferSourceSession",
+            "line": 174,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-shotgun-source-postgres/src/index.ts",
+            "symbol": "this.openSnapshot",
+            "callExpression": "this.openSnapshot(...)",
+            "callNeedle": "this.openSnapshot(",
+            "bindingEvidence": [
+              "return this.openSnapshot("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-source-v2.database.test.ts:keeps coherent MVCC content proofs and rejects escaped/unawaited v2 capabilities"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferSourceSession",
+            "receiverType": "PostgresSurferSourceSession",
+            "line": 199,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-shotgun-source-postgres/src/index.ts",
+            "symbol": "this.openSnapshot",
+            "callExpression": "this.openSnapshot(...)",
+            "callNeedle": "this.openSnapshot(",
+            "bindingEvidence": [
+              "return this.openSnapshot("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-source-v2.database.test.ts:keeps coherent MVCC content proofs and rejects escaped/unawaited v2 capabilities"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferSourceSession",
+            "receiverType": "PostgresSurferSourceSession",
+            "line": 232,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 5,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/surfer-source-v2.database.test.ts:keeps coherent MVCC content proofs and rejects escaped/unawaited v2 capabilities"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-storage-postgres/src/index.ts:219",
+      "file": "adapters/surfer-storage-postgres/src/index.ts",
+      "symbol": "PostgresSurferStorageCutover",
+      "method": "inspect",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "inspect(id: string) {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "TEST_ONLY_OR_DEAD",
+        "callers": []
+      },
+      "legacyRecordedCallers": 5,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "safe:adapters/surfer-storage-postgres/src/index.ts:63",
+      "file": "adapters/surfer-storage-postgres/src/index.ts",
+      "symbol": "PostgresSurferStorageCutover",
+      "method": "tx",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "return this.tx('cutover-begin', async (c) => {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "adapters/surfer-storage-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx('cutover-begin', async (c) => {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-cutover.database.test.ts:rolls back mode/metadata/records/captures when activation fails at the binding insert"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferStorageCutover",
+            "receiverType": "PostgresSurferStorageCutover",
+            "line": 255,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-storage-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx('cutover-begin', async (c) => {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-cutover.database.test.ts:rolls back mode/metadata/records/captures when activation fails at the binding insert"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferStorageCutover",
+            "receiverType": "PostgresSurferStorageCutover",
+            "line": 324,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-storage-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx('cutover-begin', async (c) => {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-cutover.database.test.ts:rolls back mode/metadata/records/captures when activation fails at the binding insert"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferStorageCutover",
+            "receiverType": "PostgresSurferStorageCutover",
+            "line": 420,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-storage-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx('cutover-begin', async (c) => {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-cutover.database.test.ts:rolls back mode/metadata/records/captures when activation fails at the binding insert"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferStorageCutover",
+            "receiverType": "PostgresSurferStorageCutover",
+            "line": 433,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-storage-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx('cutover-begin', async (c) => {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-cutover.database.test.ts:rolls back mode/metadata/records/captures when activation fails at the binding insert"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferStorageCutover",
+            "receiverType": "PostgresSurferStorageCutover",
+            "line": 486,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "adapters/surfer-storage-postgres/src/index.ts",
+            "symbol": "this.tx",
+            "callExpression": "this.tx(...)",
+            "callNeedle": "this.tx(",
+            "bindingEvidence": [
+              "return this.tx('cutover-begin', async (c) => {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/surfer-cutover.database.test.ts:rolls back mode/metadata/records/captures when activation fails at the binding insert"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresSurferStorageCutover",
+            "receiverType": "PostgresSurferStorageCutover",
+            "line": 511,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 30,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/surfer-cutover.database.test.ts:rolls back mode/metadata/records/captures when activation fails at the binding insert"
       ]
     },
     {
@@ -7237,7 +9583,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 11,
+      "legacyRecordedCallers": 13,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -7341,7 +9687,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 7,
+      "legacyRecordedCallers": 12,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -7381,7 +9727,7 @@
             "bindingPort": null,
             "bindingVia": "value of productJobs is the declared return type of a helper",
             "receiverType": "PostgresIsolatedNegativeKnowledgeJobs",
-            "line": 1734,
+            "line": 1888,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -7444,7 +9790,7 @@
             "bindingPort": "PostgresIsolatedNegativeKnowledgeJobs",
             "bindingVia": "value of productJobs is the declared return type of a helper",
             "receiverType": "PostgresIsolatedNegativeKnowledgeJobs",
-            "line": 1737,
+            "line": 1891,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -7462,7 +9808,7 @@
             "bindingPort": null,
             "bindingVia": "value of vpRelationJobs is the declared return type of a helper",
             "receiverType": "PostgresVPRelationJobs",
-            "line": 1808,
+            "line": 1962,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -7583,7 +9929,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 5,
+      "legacyRecordedCallers": 12,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -7796,13 +10142,13 @@
   ],
   "transactionParticipants": [
     {
-      "participantId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2700",
+      "participantId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2723",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "<anonymous-function>",
       "transactionInput": "client supplied by enclosing poolTransaction callback",
       "ownedByBoundaryIds": [
-        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123"
+        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146"
       ],
       "callerEvidence": [
         {
@@ -8702,7 +11048,7 @@
       "canonicalBoundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:91"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2377",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2400",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
@@ -8712,10 +11058,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2377"
+      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2400"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
@@ -8725,7 +11071,7 @@
       "productionReachable": true,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123"
+      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146"
     },
     {
       "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:190",
@@ -9170,33 +11516,7 @@
       "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/index.ts:296"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122",
-      "c2r1Classification": "SAFE_HELPER",
-      "c2r2Classification": "PORT_INFERRED",
-      "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
-      "symbol": "PostgresSourcesStage3ProgressRepository",
-      "method": "claim",
-      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
-      "productionReachable": false,
-      "transactionOwner": true,
-      "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122"
-    },
-    {
-      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:590",
-      "c2r1Classification": "SAFE_HELPER",
-      "c2r2Classification": "PORT_INFERRED",
-      "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
-      "symbol": "PostgresSourcesStage3AtomicPersistence",
-      "method": "persist",
-      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
-      "productionReachable": false,
-      "transactionOwner": true,
-      "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:590"
-    },
-    {
-      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:995",
+      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:1014",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
@@ -9206,7 +11526,33 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:995"
+      "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:1014"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:142",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
+      "symbol": "PostgresSourcesStage3ProgressRepository",
+      "method": "claim",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:142"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:609",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
+      "symbol": "PostgresSourcesStage3AtomicPersistence",
+      "method": "persist",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:609"
     },
     {
       "candidateId": "safe:adapters/postgres-stage4/src/index.ts:347",
@@ -9662,6 +12008,357 @@
       "transactionOwner": true,
       "transactionParticipant": false,
       "canonicalBoundaryId": "safe:adapters/source-refresh-postgres/src/index.ts:45"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-account-authority-postgres/src/bootstrap.ts:102",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TEST_ONLY_OR_DEAD",
+      "file": "adapters/surfer-account-authority-postgres/src/bootstrap.ts",
+      "symbol": "PostgresSurferAccountBootstrap",
+      "method": "inspect",
+      "reason": "No qualified production call site remains after receiver resolution.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/bootstrap.ts:102"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-account-authority-postgres/src/bootstrap.ts:117",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-account-authority-postgres/src/bootstrap.ts",
+      "symbol": "PostgresSurferAccountBootstrap",
+      "method": "apply",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/bootstrap.ts:117"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-account-authority-postgres/src/closeout.ts:18",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-account-authority-postgres/src/closeout.ts",
+      "symbol": "PostgresSurferAccountCloseout",
+      "method": "close",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/closeout.ts:18"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:107",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TEST_ONLY_OR_DEAD",
+      "file": "adapters/surfer-account-authority-postgres/src/index.ts",
+      "symbol": "PostgresSurferAccountAuthority",
+      "method": "status",
+      "reason": "No qualified production call site remains after receiver resolution.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:107"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:127",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/surfer-account-authority-postgres/src/index.ts",
+      "symbol": "PostgresSurferAccountAuthority",
+      "method": "isCurrent",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:127"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:41",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-account-authority-postgres/src/index.ts",
+      "symbol": "PostgresSurferAccountAuthority",
+      "method": "authorize",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:41"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:85",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-account-authority-postgres/src/index.ts",
+      "symbol": "PostgresSurferAccountAuthority",
+      "method": "settle",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/index.ts:85"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-account-authority-postgres/src/registration.ts:103",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-account-authority-postgres/src/registration.ts",
+      "symbol": "PostgresSurferRegistrationAdmin",
+      "method": "apply",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/registration.ts:103"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-account-authority-postgres/src/registration.ts:73",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TEST_ONLY_OR_DEAD",
+      "file": "adapters/surfer-account-authority-postgres/src/registration.ts",
+      "symbol": "PostgresSurferRegistrationAdmin",
+      "method": "inspect",
+      "reason": "No qualified production call site remains after receiver resolution.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/registration.ts:73"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-account-authority-postgres/src/root-renewal.ts:134",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-account-authority-postgres/src/root-renewal.ts",
+      "symbol": "PostgresSurferRootRenewal",
+      "method": "apply",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/root-renewal.ts:134"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-account-authority-postgres/src/root-renewal.ts:81",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TEST_ONLY_OR_DEAD",
+      "file": "adapters/surfer-account-authority-postgres/src/root-renewal.ts",
+      "symbol": "PostgresSurferRootRenewal",
+      "method": "inspect",
+      "reason": "No qualified production call site remains after receiver resolution.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/root-renewal.ts:81"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:478",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-ask-memory-postgres/src/index.ts",
+      "symbol": "PostgresSurferAskMemory",
+      "method": "prepare",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:478"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:117",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-ask-memory-postgres/src/meaning-queue.ts",
+      "symbol": "PostgresSurferMeaningQueue",
+      "method": "claim",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:117"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:182",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/surfer-ask-memory-postgres/src/meaning-queue.ts",
+      "symbol": "PostgresSurferMeaningQueue",
+      "method": "finish",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:182"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:75",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/surfer-ask-memory-postgres/src/meaning-queue.ts",
+      "symbol": "PostgresSurferMeaningQueue",
+      "method": "enqueue",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:75"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-binding-postgres/src/index.ts:59",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-binding-postgres/src/index.ts",
+      "symbol": "PostgresSurferBindingStoreV2",
+      "method": "transaction",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-binding-postgres/src/index.ts:59"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-execution-postgres/src/index.ts:16",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-execution-postgres/src/index.ts",
+      "symbol": "PostgresSurferExecutionStore",
+      "method": "transaction",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-execution-postgres/src/index.ts:16"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-history-postgres/src/index.ts:49",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/surfer-history-postgres/src/index.ts",
+      "symbol": "PostgresSurferHistoryArchive",
+      "method": "tx",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-history-postgres/src/index.ts:49"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-intake-postgres/src/index.ts:111",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/surfer-intake-postgres/src/index.ts",
+      "symbol": "PostgresSurferIntakeInbox",
+      "method": "list",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-intake-postgres/src/index.ts:111"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-intake-postgres/src/index.ts:153",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-intake-postgres/src/index.ts",
+      "symbol": "PostgresSurferIntakeInbox",
+      "method": "claim",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-intake-postgres/src/index.ts:153"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-intake-postgres/src/index.ts:47",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/surfer-intake-postgres/src/index.ts",
+      "symbol": "PostgresSurferIntakeInbox",
+      "method": "enqueue",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-intake-postgres/src/index.ts:47"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-knowledge-postgres/src/index.ts:15",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-knowledge-postgres/src/index.ts",
+      "symbol": "PostgresSurferKnowledgeStore",
+      "method": "transaction",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-knowledge-postgres/src/index.ts:15"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-knowledge-rows-postgres/src/index.ts:152",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/surfer-knowledge-rows-postgres/src/index.ts",
+      "symbol": "PostgresSurferKnowledgeRows",
+      "method": "tx",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-knowledge-rows-postgres/src/index.ts:152"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-semantic-run-postgres/src/index.ts:14",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/surfer-semantic-run-postgres/src/index.ts",
+      "symbol": "PostgresSurferSemanticRunStore",
+      "method": "transaction",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-semantic-run-postgres/src/index.ts:14"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-shotgun-source-postgres/src/index.ts:254",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/surfer-shotgun-source-postgres/src/index.ts",
+      "symbol": "PostgresSurferSourceSession",
+      "method": "openSnapshot",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-shotgun-source-postgres/src/index.ts:254"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-storage-postgres/src/index.ts:219",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TEST_ONLY_OR_DEAD",
+      "file": "adapters/surfer-storage-postgres/src/index.ts",
+      "symbol": "PostgresSurferStorageCutover",
+      "method": "inspect",
+      "reason": "No qualified production call site remains after receiver resolution.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-storage-postgres/src/index.ts:219"
+    },
+    {
+      "candidateId": "safe:adapters/surfer-storage-postgres/src/index.ts:63",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/surfer-storage-postgres/src/index.ts",
+      "symbol": "PostgresSurferStorageCutover",
+      "method": "tx",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/surfer-storage-postgres/src/index.ts:63"
     },
     {
       "candidateId": "safe:adapters/vp-knowledge-postgres/src/explicit-negative-isolated.ts:47",
@@ -10453,10 +13150,10 @@
   ],
   "rawTransactionSites": [
     {
-      "candidateId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2700",
+      "candidateId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2723",
       "kind": "RAW",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
-      "line": 2700,
+      "line": 2723,
       "sourceNeedle": "await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "<anonymous-function>",
@@ -11159,8 +13856,8 @@
       "file": "tests/database/runtime-data-integrity-wp04-schema.test.ts",
       "testName": "rejects malformed lease inputs before opening a PostgreSQL transaction",
       "covers": [
-        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122",
-        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:995"
+        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:142",
+        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:1014"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesStage3ProgressRepository.claim",
@@ -11173,7 +13870,7 @@
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 3 atomic persistence: reconciles all authorities after ACK loss",
       "covers": [
-        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:590"
+        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:609"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesStage3AtomicPersistence.persist",
@@ -11484,7 +14181,7 @@
       "file": "tests/database/frontend-ask-write-postgres.database.test.ts",
       "testName": "commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
       "covers": [
-        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123"
+        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146"
       ],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "executionService.startWorker",
@@ -11766,7 +14463,7 @@
       "file": "tests/database/a9-final-closure-evidence.test.ts",
       "testName": "commits work performed through the Ask execution transaction boundary",
       "covers": [
-        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2377"
+        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2400"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskAnswerExecutionRepository.transaction",
@@ -12106,6 +14803,131 @@
         "PostgresIsolatedNegativeKnowledgeJobs.completeRecordedNoEdge",
         "PostgresIsolatedNegativeKnowledgeJobs.finish"
       ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-app-runtime.database.test.ts:launches v12 and persists separate setting units and scope exceptions",
+      "file": "tests/database/surfer-app-runtime.database.test.ts",
+      "testName": "launches v12 and persists separate setting units and scope exceptions",
+      "covers": [
+        "safe:adapters/surfer-account-authority-postgres/src/index.ts:127"
+      ],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "automaticMeaningCase",
+      "path": [
+        "automaticMeaningCase",
+        "isCurrent"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-routing.database.test.ts:rolls back final queue ack and resumes the stored preparation/checkpoint through a new runtime-role connection",
+      "file": "tests/database/surfer-routing.database.test.ts",
+      "testName": "rolls back final queue ack and resumes the stored preparation/checkpoint through a new runtime-role connection",
+      "covers": [
+        "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:182"
+      ],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "cycle",
+      "path": [
+        "cycle",
+        "finish"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-routing.database.test.ts:deduplicates enqueue without replacing the original preparation or reactivating completed work",
+      "file": "tests/database/surfer-routing.database.test.ts",
+      "testName": "deduplicates enqueue without replacing the original preparation or reactivating completed work",
+      "covers": [
+        "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:75"
+      ],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "enqueue",
+      "path": [
+        "enqueue"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-history.database.test.ts:rolls back a mid-batch SQL failure with no row or cursor residue",
+      "file": "tests/database/surfer-history.database.test.ts",
+      "testName": "rolls back a mid-batch SQL failure with no row or cursor residue",
+      "covers": [
+        "safe:adapters/surfer-history-postgres/src/index.ts:49"
+      ],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "copyBatch",
+      "path": [
+        "copyBatch",
+        "tx"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-intake.database.test.ts:uses read-only status queries and refuses a permission change between metadata read and response",
+      "file": "tests/database/surfer-intake.database.test.ts",
+      "testName": "uses read-only status queries and refuses a permission change between metadata read and response",
+      "covers": [
+        "safe:adapters/surfer-intake-postgres/src/index.ts:111"
+      ],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "intakeStatus",
+      "path": [
+        "intakeStatus",
+        "list"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-intake.database.test.ts:deduplicates concurrent delivery and preserves the original event and transition identity",
+      "file": "tests/database/surfer-intake.database.test.ts",
+      "testName": "deduplicates concurrent delivery and preserves the original event and transition identity",
+      "covers": [
+        "safe:adapters/surfer-intake-postgres/src/index.ts:47"
+      ],
+      "coverageKind": "PUBLIC_PATH",
+      "entrySymbol": "onSourceIndexed",
+      "path": [
+        "onSourceIndexed",
+        "enqueue"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-knowledge-rows.database.test.ts:rolls back artifact/receipt/metadata together on a later insert failure",
+      "file": "tests/database/surfer-knowledge-rows.database.test.ts",
+      "testName": "rolls back artifact/receipt/metadata together on a later insert failure",
+      "covers": [
+        "safe:adapters/surfer-knowledge-rows-postgres/src/index.ts:152"
+      ],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "execute",
+      "path": [
+        "execute",
+        "tx"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-source-v2.database.test.ts:keeps coherent MVCC content proofs and rejects escaped/unawaited v2 capabilities",
+      "file": "tests/database/surfer-source-v2.database.test.ts",
+      "testName": "keeps coherent MVCC content proofs and rejects escaped/unawaited v2 capabilities",
+      "covers": [
+        "safe:adapters/surfer-shotgun-source-postgres/src/index.ts:254"
+      ],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "withSnapshotV2",
+      "path": [
+        "withSnapshotV2",
+        "openSnapshot"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/surfer-cutover.database.test.ts:rolls back mode/metadata/records/captures when activation fails at the binding insert",
+      "file": "tests/database/surfer-cutover.database.test.ts",
+      "testName": "rolls back mode/metadata/records/captures when activation fails at the binding insert",
+      "covers": [
+        "safe:adapters/surfer-storage-postgres/src/index.ts:63"
+      ],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "activate",
+      "path": [
+        "activate",
+        "tx"
+      ]
     }
   ],
   "historical": {
@@ -12114,16 +14936,16 @@
     "c2r1CandidateRows": 120
   },
   "summary": {
-    "TX_BOUNDARY": 21,
-    "PORT_INFERRED": 93,
+    "TX_BOUNDARY": 30,
+    "PORT_INFERRED": 106,
     "TX_PARTICIPANT": 0,
     "TX_DELEGATE": 0,
     "NON_TX": 14,
-    "TEST_ONLY_OR_DEAD": 19,
+    "TEST_ONLY_OR_DEAD": 24,
     "REVIEW_REQUIRED": 0,
-    "c2r1CandidateRecords": 147,
-    "uniqueCandidateIdentities": 147,
-    "reconciliationTotal": 147,
+    "c2r1CandidateRecords": 174,
+    "uniqueCandidateIdentities": 174,
+    "reconciliationTotal": 174,
     "historicalRows": 87,
     "historicalRowsExplained": 87,
     "historicalRowsUnexplained": 0

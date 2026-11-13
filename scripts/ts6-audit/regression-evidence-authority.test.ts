@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildAuditShape,
@@ -9,6 +9,9 @@ import {
   validateCorpus,
   type Corpus,
 } from '../ts6-phase-b-transaction-authority-validator.js';
+
+// These tests repeatedly hash and parse the complete runtime source inventory.
+vi.setConfig({ testTimeout: 120_000 });
 
 const ROOT = process.cwd();
 const CURRENT_MANIFEST_PATH = path.join(
@@ -36,10 +39,10 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
   it('derives the complete C2-R1 candidate set and canonical inventory', () => {
     const audit = buildAuditShape(ROOT);
 
-    expect(audit.candidates).toHaveLength(147);
-    expect(new Set(audit.candidates.map((candidate) => candidate.candidateId)).size).toBe(147);
+    expect(audit.candidates).toHaveLength(174);
+    expect(new Set(audit.candidates.map((candidate) => candidate.candidateId)).size).toBe(174);
     expect(audit.rawTransactionSites).toHaveLength(21);
-    expect(audit.boundaries).toHaveLength(133);
+    expect(audit.boundaries).toHaveLength(160);
     expect(audit.participants).toHaveLength(1);
     // Current categories are taken from the independently frozen T3 manifest.
     const boundaries = new Map(audit.boundaries.map((boundary) => [boundary.boundaryId, boundary]));
@@ -56,34 +59,34 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
       return counts;
     }, {});
     expect(audit.counts).toMatchObject(expectedCounts);
-  }, 60_000);
+  });
 
   it('still reconstructs the LEGACY authority inventory (historical record)', () => {
     const legacy = buildAuditShape(ROOT, { legacyAuthority: true });
 
     // The live inventory includes the VP boundaries; legacy scoring uses the
     // current source inventory while the frozen v2 fixture remains unchanged.
-    expect(legacy.candidates).toHaveLength(147);
-    expect(legacy.boundaries).toHaveLength(133);
+    expect(legacy.candidates).toHaveLength(174);
+    expect(legacy.boundaries).toHaveLength(160);
     expect(legacy.rawTransactionSites).toHaveLength(21);
     expect(legacy.counts).toMatchObject({
-      TX_BOUNDARY: 119,
+      TX_BOUNDARY: 146,
       NON_TX: 14,
       TEST_ONLY_OR_DEAD: 14,
       REVIEW_REQUIRED: 0,
     });
-  }, 120_000);
+  });
 
   it('keeps the historical 87-row comparison informational', () => {
     const result = validateCorpus(loadCorpus(), ROOT);
 
     expect(result.issues.map((issue) => issue.code)).not.toContain('HISTORICAL_DELTA');
-    expect(result.candidates).toHaveLength(147);
+    expect(result.candidates).toHaveLength(174);
     // The frozen fixture is a record of the LEGACY authority, so its own
     // classification is read back from it rather than from the live authority.
     expect(loadCorpus().summary.TX_BOUNDARY).toBe(100);
     expect(result.counts.TX_BOUNDARY).toBe(buildAuditShape(ROOT).counts.TX_BOUNDARY);
-  }, 60_000);
+  });
 
   it('rejects a source classification drift', () => {
     const corpus = loadCorpus();
@@ -181,7 +184,7 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
 
     expect(issueCodes(omitted)).toContain('UNREGISTERED_CANDIDATE');
     expect(issueCodes(duplicated)).toContain('DUPLICATE_CANDIDATE');
-  }, 120_000);
+  });
 
   it('rejects a new or stale raw transaction site', () => {
     const corpus = loadCorpus();
@@ -200,7 +203,7 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
 
     expect(issueCodes(unregistered)).toContain('STALE_RAW');
     expect(issueCodes(stale)).toContain('UNREGISTERED_RAW');
-  }, 120_000);
+  });
 
   it('rejects production REVIEW_REQUIRED and unresolved regression targets', () => {
     const corpus = loadCorpus();
@@ -301,7 +304,7 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
     // and the v2 lineage arithmetic holds at ID level
     expect(v2Ids.size).toBe(69);
     expect(v2Ids.size - present.length).toBe(53);
-  }, 60_000);
+  });
 
   it('R3-V02 rejects a regression path with a nonexistent symbol', () => {
     const corpus = loadCorpus();
@@ -359,7 +362,7 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
     };
 
     expect(issueCodes(mutated)).toContain('REGRESSION_PATH_SYMBOL');
-  }, 60_000);
+  });
 
   it('rejects unsupported participant-atomicity evidence with its exact error code', () => {
     const corpus = loadCorpus();

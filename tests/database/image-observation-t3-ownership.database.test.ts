@@ -90,6 +90,9 @@ describe('image derivative T3 erasure uses existing owner authorization and orig
         )
       ).rows[0].n,
     ).toBe(1);
+    // The scenarios below exercise the current runtime inspector after the
+    // historical image migrations have been checked at their own boundaries.
+    await migrateUpTo(undefined, database.databaseUrl);
   });
   async function fixture(state = 'COMPLETED') {
     const observation = imageObservationFixture();

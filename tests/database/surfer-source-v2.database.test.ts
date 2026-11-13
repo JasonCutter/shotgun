@@ -1,3 +1,4 @@
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 import { randomUUID } from 'node:crypto';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
@@ -31,11 +32,14 @@ describe.skipIf(!target)('Surfer source-binding v2 actual PostgreSQL', () => {
     if (
       url.hostname !== '127.0.0.1' ||
       url.username !== 'surfer_test' ||
-      url.pathname !== '/surfer_test'
+      url.pathname !== '/shotgun_test_surfer'
     )
       throw new Error('Disposable DB only.');
+    const databaseUrl = await requireTestDatabaseTarget({
+      environment: { ...process.env, TEST_DATABASE_URL: target },
+    });
     pool = new Pool({
-      connectionString: target,
+      connectionString: databaseUrl,
       max: 5,
       connectionTimeoutMillis: 5000,
       statement_timeout: 10000,

@@ -1,3 +1,4 @@
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { Pool } from 'pg';
@@ -45,9 +46,16 @@ describe.skipIf(!target)('Stage3 outbox to Surfer intake handoff', () => {
   });
   beforeAll(async () => {
     const u = new URL(target!);
-    if (u.hostname !== '127.0.0.1' || u.username !== 'surfer_test' || u.pathname !== '/surfer_test')
+    if (
+      u.hostname !== '127.0.0.1' ||
+      u.username !== 'surfer_test' ||
+      u.pathname !== '/shotgun_test_surfer'
+    )
       throw Error('Disposable DB only');
-    pool = new Pool({ connectionString: target, max: 8, statement_timeout: 15000 });
+    const databaseUrl = await requireTestDatabaseTarget({
+      environment: { ...process.env, TEST_DATABASE_URL: target },
+    });
+    pool = new Pool({ connectionString: databaseUrl, max: 8, statement_timeout: 15000 });
     await migrateSurferSourceDatabase(pool);
     principalId = (
       await new PostgresAuthRepository(pool).bootstrapLocalOwnerPrincipal({

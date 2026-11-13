@@ -1,3 +1,4 @@
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 import { PostgresSurferMeaningQueue } from '../../adapters/surfer-ask-memory-postgres/src/meaning-queue.js';
 import {
   SurferDeepSeekContextBound,
@@ -93,13 +94,16 @@ describe.skipIf(!target)('Real Shotgun startup with native Surfer and fake HTTP 
     const url = new URL(target!);
     const targetAllowed = upgradedClone
       ? ['127.0.0.1', 'localhost'].includes(url.hostname) &&
-        /^shotgun_surfer_upgrade_[a-f0-9]{32}$/.test(upgradedClone) &&
+        /^shotgun_test_surfer_upgrade_[a-f0-9]{32}$/.test(upgradedClone) &&
         url.pathname === '/' + upgradedClone
       : url.hostname === '127.0.0.1' &&
         url.username === 'surfer_test' &&
-        url.pathname === '/surfer_test';
+        url.pathname === '/shotgun_test_surfer';
     if (!targetAllowed) throw Error('Disposable DB only');
-    pool = new Pool({ connectionString: target, max: 4, statement_timeout: 15000 });
+    const databaseUrl = await requireTestDatabaseTarget({
+      environment: { ...process.env, TEST_DATABASE_URL: target },
+    });
+    pool = new Pool({ connectionString: databaseUrl, max: 4, statement_timeout: 15000 });
     if (upgradedClone) {
       const {
         rows: [schema],
@@ -114,7 +118,7 @@ describe.skipIf(!target)('Real Shotgun startup with native Surfer and fake HTTP 
   beforeAll(async () => {
     const url = new URL(target!);
     const authorityDb = upgradedClone
-      ? 'shotgun_surfer_upgrade_account_' + upgradedClone.slice(-32)
+      ? 'shotgun_test_surfer_upgrade_account_' + upgradedClone.slice(-32)
       : 'surfer_app_authority_test';
     await pool.query(`CREATE DATABASE "${authorityDb}"`);
     url.pathname = '/' + authorityDb;

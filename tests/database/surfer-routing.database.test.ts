@@ -1,3 +1,4 @@
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 import {
   PostgresSurferMeaningIntents,
   selectAutomaticMeaningInputs,
@@ -70,9 +71,16 @@ let pool: Pool,
 describe.skipIf(!target)('Surfer app storage dispatcher and memory operations', () => {
   beforeAll(async () => {
     const u = new URL(target!);
-    if (u.hostname !== '127.0.0.1' || u.username !== 'surfer_test' || u.pathname !== '/surfer_test')
+    if (
+      u.hostname !== '127.0.0.1' ||
+      u.username !== 'surfer_test' ||
+      u.pathname !== '/shotgun_test_surfer'
+    )
       throw new Error('Disposable database only');
-    pool = new Pool({ connectionString: target, max: 5, statement_timeout: 15000 });
+    const databaseUrl = await requireTestDatabaseTarget({
+      environment: { ...process.env, TEST_DATABASE_URL: target },
+    });
+    pool = new Pool({ connectionString: databaseUrl, max: 5, statement_timeout: 15000 });
     await migrateSurferSourceDatabase(pool, '157_surfer_account_bootstrap.sql');
     const migration = await readFile(
         new URL('../../db/migrations/158_surfer_ask_memory_context.sql', import.meta.url),

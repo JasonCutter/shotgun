@@ -1,3 +1,4 @@
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { Pool, type PoolClient } from 'pg';
@@ -20,9 +21,16 @@ let pool: Pool;
 describe.skipIf(!target)('Surfer explicit bounded Core row owner', () => {
   beforeAll(async () => {
     const u = new URL(target!);
-    if (u.hostname !== '127.0.0.1' || u.username !== 'surfer_test' || u.pathname !== '/surfer_test')
+    if (
+      u.hostname !== '127.0.0.1' ||
+      u.username !== 'surfer_test' ||
+      u.pathname !== '/shotgun_test_surfer'
+    )
       throw new Error('Disposable database only');
-    pool = new Pool({ connectionString: target, max: 5, statement_timeout: 10000 });
+    const databaseUrl = await requireTestDatabaseTarget({
+      environment: { ...process.env, TEST_DATABASE_URL: target },
+    });
+    pool = new Pool({ connectionString: databaseUrl, max: 5, statement_timeout: 10000 });
     await migrateSurferSourceDatabase(pool);
     await pool.query(
       'CREATE TABLE rows_access(space_id text PRIMARY KEY,context jsonb NOT NULL,enabled boolean NOT NULL DEFAULT true)',

@@ -1,3 +1,4 @@
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { Pool, type PoolClient } from 'pg';
@@ -30,11 +31,14 @@ describe.skipIf(!target)('Surfer isolated row-history archive', () => {
     const url = new URL(target!);
     if (
       url.hostname !== '127.0.0.1' ||
-      url.pathname !== '/surfer_test' ||
+      url.pathname !== '/shotgun_test_surfer' ||
       url.username !== 'surfer_test'
     )
       throw new Error('Disposable DB only');
-    pool = new Pool({ connectionString: target, max: 4, statement_timeout: 10000 });
+    const databaseUrl = await requireTestDatabaseTarget({
+      environment: { ...process.env, TEST_DATABASE_URL: target },
+    });
+    pool = new Pool({ connectionString: databaseUrl, max: 4, statement_timeout: 10000 });
     await migrateSurferSourceDatabase(pool);
     await pool.query(
       'CREATE TABLE history_admin(space_id text PRIMARY KEY, enabled boolean NOT NULL)',

@@ -1,3 +1,4 @@
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 import { randomUUID } from 'node:crypto';
 import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
 import { Pool, type PoolClient } from 'pg';
@@ -141,9 +142,16 @@ describe.skipIf(!target)('Surfer lossless storage cutover and writer fence', () 
     mixedBefore: Awaited<ReturnType<typeof source>>;
   beforeAll(async () => {
     const u = new URL(target!);
-    if (u.hostname !== '127.0.0.1' || u.pathname !== '/surfer_test' || u.username !== 'surfer_test')
+    if (
+      u.hostname !== '127.0.0.1' ||
+      u.pathname !== '/shotgun_test_surfer' ||
+      u.username !== 'surfer_test'
+    )
       throw new Error('Disposable database only');
-    pool = new Pool({ connectionString: target, max: 5, statement_timeout: 15000 });
+    const databaseUrl = await requireTestDatabaseTarget({
+      environment: { ...process.env, TEST_DATABASE_URL: target },
+    });
+    pool = new Pool({ connectionString: databaseUrl, max: 5, statement_timeout: 15000 });
     const dir = new URL('../../db/migrations/', import.meta.url),
       files = (await readdir(dir)).filter((x) => /^\d{3}_.*\.sql$/.test(x)).sort();
     await pool.query(

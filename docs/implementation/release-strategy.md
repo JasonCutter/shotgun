@@ -2,6 +2,10 @@
 
 > 목적: 수직 슬라이스를 안전하게 통합·배포하고 Contract, Schema, Canonical과 Projection을 되돌릴 수 있게 관리한다.
 
+> **현재 제품: Shotgun V1.0 / Application `1.0.0`.** 2026-10-20 사용자 결정으로 VP 완료본을
+> 명명했다. [현재 릴리스 범위·완료 근거·태그 이력](./releases/v1.0.0.md)을 따른다.
+> 아래 R0–R8은 초기 개발 milestone 이력이며 VP 완료본의 새 버전 번호를 대신하지 않는다.
+
 ## 1. 릴리스 단위
 
 [ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)의 전략 문서 완료를 VP 제품 출시 인수로 취급하지 않는다. 후보 benchmark, 제한 표기 또는 국소 PoC로 미완료 제품·안전·근거·평가·OSS Gate를 우회하지 않는다. 기존 VP-03~VP-11 tracker/DoD 의존성, VP-06 STOP, 배포/운영 변경의 별도 승인 경계는 유지한다.

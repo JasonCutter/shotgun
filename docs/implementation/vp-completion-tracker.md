@@ -1,11 +1,21 @@
 # VP 완료 현황표
 
-> 상태: **VP_PRODUCT_ACCEPTANCE_PASS — FINAL_CANONICAL_CLOSURE_PENDING (2026-10-19)**
+> 상태: **VP_FINAL_ACCEPTANCE_COMPLETE — Shotgun V1.0 (2026-10-20 사용자 명명 결정)**
 >
 > 최초 대조: 2026-09-29, `main@e9dd95588b39b76e8b29b8f42cfb08983172a7fa`  
 > 목적: VP의 통과 증거와 미완료 조건을 한곳에서 추적한다. 이 표는 [ADR-172](../architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md), [VP 구현계획](./vp-vampire-implementation-plan.md), [Definition of Done](./definition-of-done.md)을 대체하지 않는다.
 
 ## 갱신 규칙
+
+### 2026-10-20 — Canonical 종결 확인과 V1.0 명명
+
+최종 증거 PR #395는 `b0948b2d736b604905169264d9f76e85871079cb`에 병합됐고
+[main CI 39209347096](https://github.com/JasonCutter/shotgun/actions/runs/39209347096)의
+Quality·Frontend·Required Gates가 모두 SUCCESS다. 원래 최종 문서에서 정한 게시
+종결 조건은 충족됐다. 사용자는 이 VP 완료 제품을 **Shotgun V1.0 / Application 1.0.0**으로
+명명했다. [릴리스 범위와 정확한 근거](./releases/v1.0.0.md)를 현재 완료 판정으로 사용한다.
+새 버전 메타데이터의 게시/태그/배포는 이 명명 결정과 별도 상태다.
+아래 날짜별 PENDING/STOP은 당시 이력이며 인증 Gold나 미지원 기능의 상태를 바꾸지 않는다.
 
 ### 2026-10-19 최종 설치본 실AI 인수 PASS
 

@@ -7975,7 +7975,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:478",
+      "boundaryId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:544",
       "file": "adapters/surfer-ask-memory-postgres/src/index.ts",
       "symbol": "PostgresSurferAskMemory",
       "method": "prepare",
@@ -12153,7 +12153,7 @@
       "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/root-renewal.ts:81"
     },
     {
-      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:478",
+      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:544",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/surfer-ask-memory-postgres/src/index.ts",
@@ -12163,7 +12163,7 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:478"
+      "canonicalBoundaryId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:544"
     },
     {
       "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:117",

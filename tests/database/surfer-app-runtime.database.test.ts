@@ -359,8 +359,14 @@ describe.skipIf(!target)('Real Shotgun startup with native Surfer and fake HTTP 
       ask: 0,
       meaningWire: undefined as unknown,
       askCitationCount: undefined as number | undefined,
+      askAnswer: undefined as string | undefined,
       askPrompts: [] as {
         meaningDiscovery?: unknown;
+        thermalCyclingObservations?: {
+          specimen: string;
+          power: { status: string; records: { citationRef: string; lossPercent: number }[] };
+          visualInspection: { status: string; records: { citationRef: string; report: string }[] };
+        }[];
         interpretationMemory?: {
           contextDigest: string;
           items: unknown[];
@@ -420,9 +426,11 @@ describe.skipIf(!target)('Real Shotgun startup with native Surfer and fake HTTP 
                     },
                   }
                 : {}),
-              answer: askPrompt.interpretationMemory
-                ? '기억된 해석과 연결 원문을 확인했습니다.'
-                : '원문을 확인했습니다.',
+              answer:
+                control.askAnswer ??
+                (askPrompt.interpretationMemory
+                  ? '기억된 해석과 연결 원문을 확인했습니다.'
+                  : '원문을 확인했습니다.'),
               citations: askPrompt.context
                 .filter((c: { kind: string }) => c.kind === 'EVIDENCE')
                 .slice(
@@ -2497,6 +2505,126 @@ describe.skipIf(!target)('Real Shotgun startup with native Surfer and fake HTTP 
     expect(f.control.surfer).toBe(0);
     expect(await f.grants()).toEqual([]);
   });
+  async function thermalCyclingAsk() {
+    const app = await setup();
+    const session = new PostgresSurferSourceSession(pool);
+    const store = async (kind: string, records: string[]) => {
+      const text = [
+        'Thermal Cycling ' + kind,
+        'Campaign: NASA-19810008059-BLOCK-IV-5175',
+        'Cycles: 50',
+        ...records,
+      ].join('\n');
+      const stored = await app.actual.source(text);
+      const evidenceId = await session.withSnapshotV2(
+        app.actual.request,
+        async (s) => (await s.readMaterialV2(stored.sourceId)).material.rootEvidenceId,
+      );
+      return {
+        text,
+        selection: {
+          sourceId: stored.sourceId,
+          sourceVersionId: stored.sourceVersionId,
+          evidenceIds: [evidenceId],
+        },
+        evidenceId,
+      };
+    };
+    const power = await store('Power Measurements', [
+      'Specimen | Before (W) | After (W)',
+      '5161 | 62.70 | 62.60',
+      '6061 | 64.41 | 63.95',
+      '6132 | 63.39 | 62.94',
+      '6201 | 62.15 | 60.76',
+    ]);
+    const inspection: (typeof power)[] = [];
+    for (const [specimen, report] of [
+      ['5161', '2318'],
+      ['6061', '2317'],
+      ['6132', '2319'],
+    ])
+      inspection.push(
+        await store('Visual Inspection', [
+          'Specimen | Report | Inspection System Plan',
+          specimen + ' | ' + report + ' | Does not meet Inspection System Plan.',
+        ]),
+      );
+    const sources = [power, ...inspection];
+    const ask = async (expected: 'SUCCEEDED' | 'FAILED') => {
+      const submitted = await app.post('/product-api/frontend/ask/questions', {
+        schemaVersion: '1.0.0',
+        question: '열순환 후 시편별 출력 손실과 외관 판정은 어떻게 달라?',
+        mode: 'SOURCE_EXPLORATION',
+        sourceSelections: sources.map(({ selection }) => selection),
+        clientRequestId: randomUUID(),
+        idempotencyKey: randomUUID(),
+      });
+      expect(submitted.code, JSON.stringify(submitted.body)).toBe(200);
+      const runId = submitted.body.submission.answerRun.answerRunId;
+      await expect
+        .poll(
+          async () =>
+            (
+              await pool.query(
+                'SELECT state FROM frontend_ask.answer_runs WHERE answer_run_id=$1',
+                [runId],
+              )
+            ).rows[0]?.state,
+          { timeout: 25_000 },
+        )
+        .toBe(expected);
+      const visible = await network(
+        app.httpBase() + '/product-api/frontend/ask/answer-runs/' + runId,
+        {
+          headers: { cookie: `shotgun_session=${app.actual.session.sessionToken}` },
+        },
+      );
+      expect(visible.status).toBe(200);
+      return (await visible.json()).answerRun;
+    };
+    await app.start('native', true);
+    app.control.askCitationCount = 1;
+    app.control.askAnswer =
+      '출력 손실은 측정 기록에 있습니다(E1). 세 시편은 외관 불합격(E2, E3, E4)이며, 6201의 외관 판정은 미확정입니다.';
+    const answer = await ask('SUCCEEDED');
+    const prompt = app.control.askPrompts.at(-1)?.thermalCyclingObservations;
+    expect(prompt).toHaveLength(4);
+    for (const [specimen, report] of [
+      ['5161', '2318'],
+      ['6061', '2317'],
+      ['6132', '2319'],
+    ]) {
+      const row = prompt?.find((item) => item.specimen === specimen);
+      expect(row).toMatchObject({
+        power: { status: 'REPORTED', records: [{ lossPercent: expect.any(Number) }] },
+        visualInspection: { status: 'FAIL', records: [{ report }] },
+      });
+      expect(row?.power.records[0]?.citationRef).not.toBe(
+        row?.visualInspection.records[0]?.citationRef,
+      );
+    }
+    expect(prompt?.find((item) => item.specimen === '6201')).toMatchObject({
+      visualInspection: { status: 'UNKNOWN', records: [] },
+    });
+    expect(
+      answer.statements[0].citations
+        .map((citation: { evidenceId: string }) => citation.evidenceId)
+        .sort(),
+    ).toEqual(sources.map(({ evidenceId }) => evidenceId).sort());
+    app.control.onAsk = async () => {
+      await app.actual.source(inspection[0]!.text.replace('Does not meet', 'Meets'), {
+        sourceId: inspection[0]!.selection.sourceId,
+      });
+    };
+    const changed = await ask('FAILED');
+    expect(changed.statements).toEqual([]);
+    expect(changed.failure.code).toBe('STALE_VERSION');
+  }
+  it(
+    'separates power and visual findings in ordinary Ask for thermal cycling Sources',
+    () => thermalCyclingAsk(),
+    90000,
+  );
   it('serves real HTTP intake through actual resolver/Vault/scheduler to memory and a cited guided answer', async () => {
     const f = await setup();
     await f.start();

@@ -26,6 +26,10 @@ import { PostgresOriginalAssetRepository } from '../../postgres/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import { ShotgunError } from '../../../packages/contracts/src/errors.js';
 import { surferDigest } from '../../../packages/contracts/src/surfer-learning.js';
+import { sha256Text } from '../../../packages/contracts/src/document-evidence.js';
+import { readSurferEnvironmentalReportText } from '../../../modules/surfer-learning/src/environmental-report.js';
+import type { SurferAskEnvironmentalReport } from '../../../packages/contracts/src/surfer-ask-environment.js';
+import { readSurferAskThermalRecord } from '../../../packages/contracts/src/surfer-ask-thermal-cycling.js';
 import {
   pinSurferAskMemory,
   decodeSurferAskMemoryContext,
@@ -60,6 +64,64 @@ const actor = (
   workerId: string,
 ): SurferAskSourceRequest => ({ projectId, ask: { attemptId, answerRunId, leaseOwner: workerId } });
 const rank = { public: 0, internal: 1, private: 2, restricted: 3 };
+async function environmentalReportsFor(
+  pool: Pool,
+  a: SurferAskSourceRequest,
+  evidence: readonly AskExecutionEvidence[],
+): Promise<SurferAskEnvironmentalReport[] | undefined> {
+  const candidates = evidence.flatMap((e) => {
+    if (e.exactQuote.length > 12_000) return [];
+    const thermal = readSurferAskThermalRecord(e.exactQuote);
+    return thermal ||
+      /^\s*\d+(?:\.\d+)+ (?:Non-Operating|Operating) Environmental Tests\b/im.test(e.exactQuote)
+      ? [{ e, thermal }]
+      : [];
+  });
+  if (!candidates.length) return undefined;
+  const thermalWithinBound =
+    new Set(candidates.flatMap(({ e, thermal }) => (thermal ? [e.sourceId] : []))).size <= 4;
+  const reports: SurferAskEnvironmentalReport[] = [];
+  await new PostgresSurferSourceSession(pool).withRoutedSnapshot(a, 'READ', async ({ session }) => {
+    let reportCount = 0;
+    for (const { e, thermal } of candidates) {
+      if (thermal ? !thermalWithinBound : reportCount === 3) continue;
+      if (reports.some(({ source }) => source.sourceId === e.sourceId)) continue;
+      const { material } = await session.readMaterialV2(e.sourceId);
+      if (
+        material.sourceVersionId !== e.sourceVersionId ||
+        rank[material.scope.sensitivity] > rank[e.sensitivity]
+      )
+        throw stale();
+      if (
+        material.rootEvidenceId !== e.evidenceId ||
+        sha256Text(e.exactQuote) !== material.sourceContentHash ||
+        !material.evidence.some(
+          (span) => span.evidenceId === e.evidenceId && span.quote.exact === e.exactQuote,
+        )
+      )
+        continue;
+      const { sourceId, sourceVersionId, revisionId, indexingResultId } = material;
+      const pin = {
+        evidenceId: e.evidenceId,
+        source: { sourceId, sourceVersionId, revisionId, indexingResultId },
+      };
+      if (thermal) {
+        reports.push({ ...pin, thermalRecord: thermal });
+        continue;
+      }
+      const observations = readSurferEnvironmentalReportText(e.exactQuote);
+      if (
+        !observations.length ||
+        observations.length > 8 ||
+        observations.some((o) => o.exceptions.length > 8)
+      )
+        continue;
+      reports.push({ ...pin, observations });
+      reportCount++;
+    }
+  });
+  return reports.length ? reports : undefined;
+}
 /** Read-only Evidence-subset recall and scoped rule computation share one Source MVCC. */
 async function packetFor(
   pool: Pool,
@@ -450,6 +512,7 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
       return pinned;
     }
     let packet: SurferAskMemoryPacket | null;
+    let environmentalReports: SurferAskEnvironmentalReport[] | undefined;
     if (claimed.attempt.kind === 'RETRY_SAME_CONTEXT') {
       const old = await this.pool.query(
         'SELECT context FROM frontend_ask.surfer_memory_context WHERE project_id=$1 AND answer_run_id=$2 AND attempt_number<$3 ORDER BY attempt_number DESC LIMIT 1',
@@ -458,7 +521,8 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
       const previous = old.rows[0] ? decodeSurferAskMemoryContext(old.rows[0].context) : null;
       if (previous && previous.baseContextDigest !== base) throw stale();
       packet = previous?.packet ?? null;
-    } else
+      environmentalReports = previous?.environmentalReports;
+    } else {
       packet = await packetFor(
         this.pool,
         a,
@@ -473,7 +537,9 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
         !claimed.context.context.some((c) => c.kind === 'GENERATED_IMAGE_OBSERVATION'),
         !claimed.context.context.some((c) => c.kind === 'GENERATED_IMAGE_OBSERVATION'),
       );
-    const context = pinSurferAskMemory(base, packet);
+      environmentalReports = await environmentalReportsFor(this.pool, a, claimed.context.evidence);
+    }
+    const context = pinSurferAskMemory(base, packet, environmentalReports);
     await this.validate(scope, claimed, context);
     return withSafePostgresTransaction(
       this.pool,
@@ -517,6 +583,11 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
       a = this.request(scope, claimed);
     if (context.baseContextDigest !== claimed.context.resolvedContextDigest) throw stale();
     await authorizeSurferAskRead(this.pool, a);
+    if (context.environmentalReports) {
+      const current = await environmentalReportsFor(this.pool, a, claimed.context.evidence);
+      if (!current || surferDigest(current) !== surferDigest(context.environmentalReports))
+        throw stale();
+    }
     if (context.packet) {
       const current = await packetFor(
         this.pool,
@@ -627,12 +698,22 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
       }
     // Reuse the full Source/Core closure validator while the publication transaction holds
     // the mutable knowledge roots. A changed input/head/footprint need not change activeSnapshotId.
-    if (context.packet) {
+    if (context.packet || context.environmentalReports) {
       const evidence = await client.query<AskExecutionEvidence>(
         `SELECT evidence_id AS "evidenceId",source_id AS "sourceId",source_version_id AS "sourceVersionId",exact_quote AS "exactQuote",sensitivity
          FROM frontend_ask.answer_attempt_evidence WHERE attempt_id=$1 ORDER BY evidence_ordinal`,
         [input.attemptId],
       );
+      const a = actor(input.scope.projectId, input.attemptId, input.answerRunId, input.workerId);
+      if (context.environmentalReports) {
+        const current = await environmentalReportsFor(this.pool, a, evidence.rows);
+        if (!current || surferDigest(current) !== surferDigest(context.environmentalReports))
+          throw stale();
+      }
+      if (!context.packet) {
+        if (input.meaningProposal) throw stale();
+        return;
+      }
       const question = (
         await client.query('SELECT question FROM frontend_ask.answer_runs WHERE answer_run_id=$1', [
           input.answerRunId,
@@ -640,7 +721,7 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
       ).rows[0].question;
       const current = await packetFor(
         this.pool,
-        actor(input.scope.projectId, input.attemptId, input.answerRunId, input.workerId),
+        a,
         evidence.rows,
         question,
         context.revision !== 'surfer.ask-memory.v1',
@@ -730,59 +811,69 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
   ) {
     await authorizeSurferAskRead(client, a);
     const packet = context.packet;
-    if (!packet) return;
-    const route = (
-      await client.query('SELECT mode FROM surfer_rows.route WHERE space_id=$1', [a.projectId])
-    ).rows[0];
-    const profile = route && ['ROWS', 'SUSPENDED'].includes(route.mode) ? 'ROWS' : 'LEGACY';
-    if ((route && ['COPYING', 'CONFLICT'].includes(route.mode)) || profile !== packet.storage)
-      throw stale();
-    if (profile === 'LEGACY') {
-      const core = (
-          await client.query(
-            'SELECT payload,digest FROM surfer_knowledge.space_state WHERE space_id=$1 FOR SHARE',
-            [a.projectId],
+    if (!packet && !context.environmentalReports) return;
+    if (context.environmentalReports) {
+      const sourceIds = context.environmentalReports.map(({ source }) => source.sourceId).sort();
+      const locked = await client.query(
+        'SELECT source_id FROM asset.sources WHERE project_id=$1 AND source_id::text=ANY($2::text[]) ORDER BY source_id FOR SHARE',
+        [a.projectId, sourceIds],
+      );
+      if (locked.rowCount !== sourceIds.length) throw stale();
+    }
+    if (packet) {
+      const route = (
+        await client.query('SELECT mode FROM surfer_rows.route WHERE space_id=$1', [a.projectId])
+      ).rows[0];
+      const profile = route && ['ROWS', 'SUSPENDED'].includes(route.mode) ? 'ROWS' : 'LEGACY';
+      if ((route && ['COPYING', 'CONFLICT'].includes(route.mode)) || profile !== packet.storage)
+        throw stale();
+      if (profile === 'LEGACY') {
+        const core = (
+            await client.query(
+              'SELECT payload,digest FROM surfer_knowledge.space_state WHERE space_id=$1 FOR SHARE',
+              [a.projectId],
+            )
+          ).rows[0],
+          binding = (
+            await client.query(
+              'SELECT payload,digest FROM surfer_knowledge.source_binding_v2 WHERE space_id=$1 FOR SHARE',
+              [a.projectId],
+            )
+          ).rows[0];
+        if (
+          !core ||
+          !binding ||
+          surferDigest(core.payload) !== core.digest ||
+          surferDigest(binding.payload) !== binding.digest ||
+          // V2 publication deliberately preserves the V1 active pointer. The sidecar owns selection.
+          binding.payload.activeSnapshotId !== packet.snapshot.snapshotId ||
+          !core.payload.snapshots.some(
+            (s: { snapshotId: string; digest: string }) =>
+              s.snapshotId === packet.snapshot.snapshotId && s.digest === packet.snapshot.digest,
           )
-        ).rows[0],
-        binding = (
-          await client.query(
-            'SELECT payload,digest FROM surfer_knowledge.source_binding_v2 WHERE space_id=$1 FOR SHARE',
-            [a.projectId],
-          )
-        ).rows[0];
-      if (
-        !core ||
-        !binding ||
-        surferDigest(core.payload) !== core.digest ||
-        surferDigest(binding.payload) !== binding.digest ||
-        // V2 publication deliberately preserves the V1 active pointer. The sidecar owns selection.
-        binding.payload.activeSnapshotId !== packet.snapshot.snapshotId ||
-        !core.payload.snapshots.some(
-          (s: { snapshotId: string; digest: string }) =>
-            s.snapshotId === packet.snapshot.snapshotId && s.digest === packet.snapshot.digest,
         )
-      )
-        throw stale();
-    } else {
-      const core = (
-          await client.query(
-            'SELECT payload,digest FROM surfer_rows.space WHERE space_id=$1 FOR SHARE',
-            [a.projectId],
-          )
-        ).rows[0],
-        snapshot = (
-          await client.query(
-            "SELECT payload FROM surfer_rows.record WHERE space_id=$1 AND kind='SNAPSHOT' AND record_id=$2",
-            [a.projectId, packet.snapshot.snapshotId],
-          )
-        ).rows[0];
-      if (
-        !core ||
-        surferDigest(core.payload) !== core.digest ||
-        core.payload.activeSnapshotId !== packet.snapshot.snapshotId ||
-        snapshot?.payload.digest !== packet.snapshot.digest
-      )
-        throw stale();
+          throw stale();
+      } else {
+        const core = (
+            await client.query(
+              'SELECT payload,digest FROM surfer_rows.space WHERE space_id=$1 FOR SHARE',
+              [a.projectId],
+            )
+          ).rows[0],
+          snapshot = (
+            await client.query(
+              "SELECT payload FROM surfer_rows.record WHERE space_id=$1 AND kind='SNAPSHOT' AND record_id=$2",
+              [a.projectId, packet.snapshot.snapshotId],
+            )
+          ).rows[0];
+        if (
+          !core ||
+          surferDigest(core.payload) !== core.digest ||
+          core.payload.activeSnapshotId !== packet.snapshot.snapshotId ||
+          snapshot?.payload.digest !== packet.snapshot.digest
+        )
+          throw stale();
+      }
     }
     // Reuse the Source owner for latest versions and active indexing; no SQL client escapes.
     const bound = new Proxy(this.pool, {
@@ -802,7 +893,10 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
       }),
       repository = new PostgresOriginalAssetRepository(bound),
       all = await repository.listProjectSourceVersions(a.projectId);
-    for (const pin of packet.sources) {
+    for (const pin of [
+      ...(packet?.sources ?? []),
+      ...(context.environmentalReports?.map((r) => r.source) ?? []),
+    ]) {
       const latest = all
         .filter((r) => r.sourceId === pin.sourceId)
         .sort((x, y) => y.versionNumber - x.versionNumber)[0];

@@ -6,6 +6,8 @@ import type {
   StructuredGenerationRequest,
 } from '../../modules/ai-provider/src/index.js';
 import type { AskAnswerProviderRequest } from '../../modules/frontend-ask-execution/src/index.js';
+import { pinSurferAskMemory } from '../../packages/contracts/src/surfer-ask-memory.js';
+import { readSurferAskThermalRecord } from '../../packages/contracts/src/surfer-ask-thermal-cycling.js';
 
 const request = (context: AskAnswerProviderRequest['context']): AskAnswerProviderRequest => ({
   answerRunId: 'run-citation-binding',
@@ -55,6 +57,54 @@ const provider = (
 });
 
 describe('StructuredAskAnswerProviderAdapter citation reference binding', () => {
+  it('restores explicit thermal prose citations only from the selected thermal Sources', async () => {
+    const thermal = ['5161', '6061', '6132', '6201'].map((specimen, index) => {
+      const sourceId = 'report-' + index;
+      return {
+        ...evidence(
+          sourceId + '-e',
+          [
+            'Thermal Cycling Visual Inspection',
+            'Campaign: JPL-50',
+            'Cycles: 50',
+            'Specimen | Report | Inspection System Plan',
+            specimen + ' | 2318 | Does not meet Inspection System Plan.',
+          ].join('\n'),
+        ),
+        sourceId,
+      };
+    });
+    const question = request([...thermal, evidence('memo-e', 'Selected unrelated memo.')]);
+    const fake = provider(async () => ({
+      rawText: JSON.stringify({
+        answer: '출력 근거(E1). 외관 기록(E2, E3, E4). 반복 [E2]. 다른 표기 (E5), (E99).',
+        citations: [{ citationRef: 'E1' }],
+      }),
+    }));
+    const adapter = new StructuredAskAnswerProviderAdapter(fake);
+    const withThermal = {
+      ...question,
+      surferMemory: pinSurferAskMemory(
+        question.resolvedContextDigest,
+        null,
+        thermal.map((item) => ({
+          source: {
+            sourceId: item.sourceId,
+            sourceVersionId: item.sourceVersionId,
+            revisionId: 'r',
+            indexingResultId: 'i',
+          },
+          evidenceId: item.evidenceId,
+          thermalRecord: readSurferAskThermalRecord(item.exactQuote)!,
+        })),
+      ),
+    };
+    expect((await adapter.execute(withThermal)).citations).toEqual(
+      thermal.map(({ evidenceId }) => ({ evidenceId })),
+    );
+    expect((await adapter.execute(question)).citations).toEqual([{ evidenceId: 'report-0-e' }]);
+  });
+
   it('passes external-source freshness to AI and requires expired evidence to be described as historical', async () => {
     let generation: StructuredGenerationRequest | undefined;
     const adapter = new StructuredAskAnswerProviderAdapter(

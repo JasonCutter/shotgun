@@ -716,7 +716,7 @@
       "reachabilityStatus": "TEST_ONLY_OR_DEAD"
     },
     {
-      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:478",
+      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:544",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },

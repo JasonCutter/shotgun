@@ -1,0 +1,28 @@
+{
+  "record": "Surfer ZeMA stable cooler 20% FS1 pump leakage hypothesis, review only",
+  "dataset": "UCI 447 / ZeMA, doi:10.24432/C5CW21",
+  "artifactId": "hydraulic:pump-waveform:zema-fs1-review-v1",
+  "artifactRevision": 1,
+  "artifactDigest": "sha256:dc6897a3177da98cf2e0af73b75833c0d645cf70470a86d65d460e5b93d74876",
+  "candidateDigest": "sha256:f8c9e5400da6ed7a325c2b6ce533723d8a4102fb55925aba948055372fbdd4c7",
+  "regime": "zema-stable-cooler-20",
+  "supportedFlowSpreads": [
+    7.5,
+    7.75,
+    8.0
+  ],
+  "expression": {
+    "op": "lte",
+    "left": {
+      "op": "field",
+      "name": "spreadFS1Flow"
+    },
+    "right": {
+      "op": "literal",
+      "value": 7.75,
+      "unit": "L/min"
+    }
+  },
+  "formalStatus": "PENDING_INDEPENDENT_ACTIVATION",
+  "diagnosticAgreement": "48/48 (separate diagnostic sample)"
+}

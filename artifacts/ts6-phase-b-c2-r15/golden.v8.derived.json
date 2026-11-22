@@ -3,7 +3,7 @@
   "baseSha": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
   "derivedFrom": {
     "parentArtifact": "artifacts/ts6-phase-b-c2-r15/approved-regression-relations.v8.json",
-    "parentSha256": "aef4fe3de3a2e770bdcf31de4403b15c7cc71b41095e6bae62e757e54741f764",
+    "parentSha256": "071dfc16364f006ccebb3ed8301615d176410ff072edda53eaae9a59738166e0",
     "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
     "authorityVersion": "ts6.phase-b.current-authority-manifest.v8"
   },
@@ -2632,7 +2632,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2400",
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2406",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "transaction",
@@ -2662,7 +2662,7 @@
             "bindingPort": "AskAnswerExecutionRepositoryPort",
             "bindingVia": "field repository of AskAnswerExecutionService declared as AskAnswerExecutionRepositoryPort",
             "receiverType": "AskAnswerExecutionRepositoryPort",
-            "line": 824,
+            "line": 830,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -2677,7 +2677,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146",
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3152",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "poolTransaction",
@@ -2707,7 +2707,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 653,
+            "line": 654,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2725,7 +2725,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1209,
+            "line": 1210,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2743,7 +2743,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1241,
+            "line": 1242,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2761,7 +2761,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1450,
+            "line": 1451,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2779,7 +2779,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1581,
+            "line": 1582,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2797,7 +2797,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1662,
+            "line": 1664,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2815,7 +2815,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1907,
+            "line": 1913,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2833,7 +2833,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 2459,
+            "line": 2465,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2851,7 +2851,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 2658,
+            "line": 2664,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -2869,7 +2869,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 2680,
+            "line": 2686,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -7975,7 +7975,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:544",
+      "boundaryId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:568",
       "file": "adapters/surfer-ask-memory-postgres/src/index.ts",
       "symbol": "PostgresSurferAskMemory",
       "method": "prepare",
@@ -8003,7 +8003,7 @@
             "bindingPort": "AskMemoryContextPort",
             "bindingVia": "field memoryContext of AskAnswerExecutionService declared as AskMemoryContextPort",
             "receiverType": "AskMemoryContextPort",
-            "line": 1099,
+            "line": 1090,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -10142,13 +10142,13 @@
   ],
   "transactionParticipants": [
     {
-      "participantId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2723",
+      "participantId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2729",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "<anonymous-function>",
       "transactionInput": "client supplied by enclosing poolTransaction callback",
       "ownedByBoundaryIds": [
-        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146"
+        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3152"
       ],
       "callerEvidence": [
         {
@@ -11048,7 +11048,7 @@
       "canonicalBoundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:91"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2400",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2406",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
@@ -11058,10 +11058,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2400"
+      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2406"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3152",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
@@ -11071,7 +11071,7 @@
       "productionReachable": true,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146"
+      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3152"
     },
     {
       "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:190",
@@ -12153,7 +12153,7 @@
       "canonicalBoundaryId": "safe:adapters/surfer-account-authority-postgres/src/root-renewal.ts:81"
     },
     {
-      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:544",
+      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:568",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/surfer-ask-memory-postgres/src/index.ts",
@@ -12163,7 +12163,7 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:544"
+      "canonicalBoundaryId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:568"
     },
     {
       "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/meaning-queue.ts:117",
@@ -13150,10 +13150,10 @@
   ],
   "rawTransactionSites": [
     {
-      "candidateId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2723",
+      "candidateId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2729",
       "kind": "RAW",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
-      "line": 2723,
+      "line": 2729,
       "sourceNeedle": "await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "<anonymous-function>",
@@ -14181,7 +14181,7 @@
       "file": "tests/database/frontend-ask-write-postgres.database.test.ts",
       "testName": "commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
       "covers": [
-        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146"
+        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3152"
       ],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "executionService.startWorker",
@@ -14463,7 +14463,7 @@
       "file": "tests/database/a9-final-closure-evidence.test.ts",
       "testName": "commits work performed through the Ask execution transaction boundary",
       "covers": [
-        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2400"
+        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2406"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskAnswerExecutionRepository.transaction",

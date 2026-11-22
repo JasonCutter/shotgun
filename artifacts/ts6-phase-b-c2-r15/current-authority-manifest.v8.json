@@ -291,12 +291,12 @@
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2400",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2406",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3146",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3152",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
@@ -716,7 +716,7 @@
       "reachabilityStatus": "TEST_ONLY_OR_DEAD"
     },
     {
-      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:544",
+      "candidateId": "safe:adapters/surfer-ask-memory-postgres/src/index.ts:568",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },

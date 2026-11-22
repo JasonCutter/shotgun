@@ -1,4 +1,9 @@
 import { lockAskCrossReviews, readAskCrossReview } from './ask-cross-review.js';
+import { pumpReviewFor } from './pump-review.js';
+import {
+  SURFER_PUMP_REVIEW_PROVIDER,
+  type SurferAskPumpReview,
+} from '../../../packages/contracts/src/surfer-ask-pump-review.js';
 import { selectSurferAskMeaningScope } from '../../../packages/contracts/src/surfer-ask-adoption.js';
 import type { Pool, PoolClient } from 'pg';
 import type {
@@ -513,6 +518,7 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
     }
     let packet: SurferAskMemoryPacket | null;
     let environmentalReports: SurferAskEnvironmentalReport[] | undefined;
+    let pumpReview: SurferAskPumpReview | undefined;
     if (claimed.attempt.kind === 'RETRY_SAME_CONTEXT') {
       const old = await this.pool.query(
         'SELECT context FROM frontend_ask.surfer_memory_context WHERE project_id=$1 AND answer_run_id=$2 AND attempt_number<$3 ORDER BY attempt_number DESC LIMIT 1',
@@ -522,24 +528,42 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
       if (previous && previous.baseContextDigest !== base) throw stale();
       packet = previous?.packet ?? null;
       environmentalReports = previous?.environmentalReports;
+      pumpReview = previous?.pumpReview;
     } else {
-      packet = await packetFor(
-        this.pool,
-        a,
-        claimed.context.evidence,
-        claimed.context.snapshot.question,
-        true,
-        true,
-        true,
-        !claimed.context.context.some((c) => c.kind === 'GENERATED_IMAGE_OBSERVATION'),
-        !claimed.context.context.some((c) => c.kind === 'GENERATED_IMAGE_OBSERVATION'),
-        !claimed.context.context.some((c) => c.kind === 'GENERATED_IMAGE_OBSERVATION'),
-        !claimed.context.context.some((c) => c.kind === 'GENERATED_IMAGE_OBSERVATION'),
-        !claimed.context.context.some((c) => c.kind === 'GENERATED_IMAGE_OBSERVATION'),
+      const hasImages = claimed.context.context.some(
+        (c) => c.kind === 'GENERATED_IMAGE_OBSERVATION',
       );
-      environmentalReports = await environmentalReportsFor(this.pool, a, claimed.context.evidence);
+      if (!hasImages)
+        pumpReview = await pumpReviewFor(
+          this.pool,
+          a,
+          claimed.context.evidence,
+          claimed.context.snapshot.question,
+        );
+      packet = pumpReview
+        ? null
+        : await packetFor(
+            this.pool,
+            a,
+            claimed.context.evidence,
+            claimed.context.snapshot.question,
+            true,
+            true,
+            true,
+            !hasImages,
+            !hasImages,
+            !hasImages,
+            !hasImages,
+            !hasImages,
+          );
+      if (!pumpReview)
+        environmentalReports = await environmentalReportsFor(
+          this.pool,
+          a,
+          claimed.context.evidence,
+        );
     }
-    const context = pinSurferAskMemory(base, packet, environmentalReports);
+    const context = pinSurferAskMemory(base, packet, environmentalReports, pumpReview);
     await this.validate(scope, claimed, context);
     return withSafePostgresTransaction(
       this.pool,
@@ -583,6 +607,15 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
       a = this.request(scope, claimed);
     if (context.baseContextDigest !== claimed.context.resolvedContextDigest) throw stale();
     await authorizeSurferAskRead(this.pool, a);
+    if (context.pumpReview) {
+      const current = await pumpReviewFor(
+        this.pool,
+        a,
+        claimed.context.evidence,
+        claimed.context.snapshot.question,
+      );
+      if (!current || surferDigest(current) !== surferDigest(context.pumpReview)) throw stale();
+    }
     if (context.environmentalReports) {
       const current = await environmentalReportsFor(this.pool, a, claimed.context.evidence);
       if (!current || surferDigest(current) !== surferDigest(context.environmentalReports))
@@ -639,6 +672,7 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
       resolvedContextDigest?: string;
       meaningProposal?: SurferAskMeaningProposalReceipt;
       provider?: SurferAskMeaningProposalReceipt['producer'];
+      reviewOnly?: true;
     },
   ) {
     const row = (
@@ -647,9 +681,20 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
         [input.attemptId, input.answerRunId, input.scope.projectId],
       )
     ).rows[0];
-    if (!row) return; // Historical/base-only attempts never gain a new memory pin retroactively.
+    if (!row) {
+      if (input.reviewOnly) throw stale();
+      return; // Historical/base-only attempts never gain a new memory pin retroactively.
+    }
     const context = decodeSurferAskMemoryContext(row.context);
     if (row.digest !== context.digest || context.baseContextDigest !== input.resolvedContextDigest)
+      throw stale();
+    if (
+      Boolean(context.pumpReview) !== Boolean(input.reviewOnly) ||
+      (context.pumpReview &&
+        (input.provider?.provider !== SURFER_PUMP_REVIEW_PROVIDER.provider ||
+          input.provider.model !== SURFER_PUMP_REVIEW_PROVIDER.model ||
+          input.provider.adapterVersion !== SURFER_PUMP_REVIEW_PROVIDER.adapterVersion))
+    )
       throw stale();
     await this.assertPins(
       client,
@@ -698,13 +743,23 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
       }
     // Reuse the full Source/Core closure validator while the publication transaction holds
     // the mutable knowledge roots. A changed input/head/footprint need not change activeSnapshotId.
-    if (context.packet || context.environmentalReports) {
+    if (context.packet || context.environmentalReports || context.pumpReview) {
       const evidence = await client.query<AskExecutionEvidence>(
         `SELECT evidence_id AS "evidenceId",source_id AS "sourceId",source_version_id AS "sourceVersionId",exact_quote AS "exactQuote",sensitivity
          FROM frontend_ask.answer_attempt_evidence WHERE attempt_id=$1 ORDER BY evidence_ordinal`,
         [input.attemptId],
       );
       const a = actor(input.scope.projectId, input.attemptId, input.answerRunId, input.workerId);
+      if (context.pumpReview) {
+        const { rows } = await client.query<{ question: string }>(
+          'SELECT question FROM frontend_ask.answer_runs WHERE answer_run_id=$1 AND project_id=$2',
+          [input.answerRunId, input.scope.projectId],
+        );
+        const question = rows[0]?.question;
+        if (!question) throw stale();
+        const current = await pumpReviewFor(this.pool, a, evidence.rows, question);
+        if (!current || surferDigest(current) !== surferDigest(context.pumpReview)) throw stale();
+      }
       if (context.environmentalReports) {
         const current = await environmentalReportsFor(this.pool, a, evidence.rows);
         if (!current || surferDigest(current) !== surferDigest(context.environmentalReports))
@@ -811,15 +866,20 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
   ) {
     await authorizeSurferAskRead(client, a);
     const packet = context.packet;
-    if (!packet && !context.environmentalReports) return;
-    if (context.environmentalReports) {
-      const sourceIds = context.environmentalReports.map(({ source }) => source.sourceId).sort();
+    const sourceIds = [
+      ...new Set([
+        ...(context.environmentalReports?.map(({ source }) => source.sourceId) ?? []),
+        ...(context.pumpReview?.evidence.map(({ source }) => source.sourceId) ?? []),
+      ]),
+    ];
+    if (sourceIds.length) {
       const locked = await client.query(
         'SELECT source_id FROM asset.sources WHERE project_id=$1 AND source_id::text=ANY($2::text[]) ORDER BY source_id FOR SHARE',
         [a.projectId, sourceIds],
       );
       if (locked.rowCount !== sourceIds.length) throw stale();
     }
+    if (!packet && !context.environmentalReports && !context.pumpReview?.evidence.length) return;
     if (packet) {
       const route = (
         await client.query('SELECT mode FROM surfer_rows.route WHERE space_id=$1', [a.projectId])
@@ -896,6 +956,7 @@ export class PostgresSurferAskMemory implements AskMemoryContextPort {
     for (const pin of [
       ...(packet?.sources ?? []),
       ...(context.environmentalReports?.map((r) => r.source) ?? []),
+      ...(context.pumpReview?.evidence.map((pin) => pin.source) ?? []),
     ]) {
       const latest = all
         .filter((r) => r.sourceId === pin.sourceId)

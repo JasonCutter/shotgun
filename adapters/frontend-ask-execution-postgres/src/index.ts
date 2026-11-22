@@ -423,6 +423,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         resolvedContextDigest?: string;
         meaningProposal?: SurferAskMeaningProposalReceipt;
         provider?: AskAnswerRunProvider;
+        reviewOnly?: true;
       },
     ) => Promise<void>,
   ) {}
@@ -1644,6 +1645,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
 
   async complete(input: {
     readonly meaningProposal?: SurferAskMeaningProposalReceipt;
+    readonly reviewOnly?: true;
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly attemptNumber: number;
@@ -1682,6 +1684,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         resolvedContextDigest: input.resolvedContextDigest,
         meaningProposal: input.meaningProposal,
         provider: input.provider,
+        reviewOnly: input.reviewOnly,
       });
       if (
         input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP4 ||
@@ -1782,6 +1785,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       }
       if (pinnedContext.length === 0 && input.answerSupportStatus !== undefined)
         throw invalid('Image answer disposition requires a pinned image context.');
+      if (input.reviewOnly && (pinnedContext.length > 0 || !this.memoryPublicationGuard))
+        throw invalid('Review conclusions require a pinned Surfer review with text Evidence.');
       if (
         pinnedContext.length > 0 &&
         (!input.answerSupportStatus ||
@@ -1792,6 +1797,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         throw invalid('Image answer disposition conflicts with references.');
       const contextStatus =
         contextResult.rows[0]?.context_supported === true &&
+        !input.reviewOnly &&
         input.answerSupportStatus !== 'NO_SUPPORTED_ANSWER'
           ? 'SUPPORTED'
           : 'NO_SUPPORTED_ANSWER';
@@ -1819,7 +1825,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           completedAt,
           input.attemptNumber,
           input.workerId,
-          pinnedContext.length > 0 ? contextStatus === 'SUPPORTED' : null,
+          pinnedContext.length > 0 || input.reviewOnly ? contextStatus === 'SUPPORTED' : null,
         ],
       );
       if ((attemptUpdate.rowCount ?? 0) !== 1) return;

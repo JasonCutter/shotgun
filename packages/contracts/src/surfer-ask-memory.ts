@@ -11,6 +11,7 @@ import {
   assertSurferAskEnvironmentalReports,
   type SurferAskEnvironmentalReport,
 } from './surfer-ask-environment.js';
+import { assertSurferAskPumpReview, type SurferAskPumpReview } from './surfer-ask-pump-review.js';
 export type SurferAskPremiseGrounding = {
   revision:
     | 'surfer.ask-declared-field-clauses.v1'
@@ -96,6 +97,7 @@ export type SurferAskMemoryContext = {
   baseContextDigest: string;
   packet: SurferAskMemoryPacket | null;
   environmentalReports?: SurferAskEnvironmentalReport[];
+  pumpReview?: SurferAskPumpReview;
   digest: string;
 };
 const keys = (o: object, k: string) => Object.keys(o).sort().join(',') === k;
@@ -212,9 +214,11 @@ export function decodeSurferAskMemoryContext(value: unknown): SurferAskMemoryCon
     !r ||
     !keys(
       r,
-      r.environmentalReports === undefined
-        ? 'baseContextDigest,digest,packet,revision'
-        : 'baseContextDigest,digest,environmentalReports,packet,revision',
+      'baseContextDigest,digest,' +
+        (r.environmentalReports === undefined ? '' : 'environmentalReports,') +
+        'packet,' +
+        (r.pumpReview === undefined ? '' : 'pumpReview,') +
+        'revision',
     ) ||
     ![
       'surfer.ask-memory.v1',
@@ -234,6 +238,11 @@ export function decodeSurferAskMemoryContext(value: unknown): SurferAskMemoryCon
     throw surferFailure('Invalid Ask memory context.');
   if (r.environmentalReports !== undefined)
     assertSurferAskEnvironmentalReports(r.environmentalReports);
+  if (r.pumpReview !== undefined) {
+    if (r.packet !== null || r.environmentalReports !== undefined)
+      throw surferFailure('Ask pump review requires an independent memory context.');
+    assertSurferAskPumpReview(r.pumpReview);
+  }
   const p = r.packet;
   if (
     r.revision === 'surfer.ask-memory.v7' &&
@@ -509,6 +518,7 @@ export function decodeSurferAskMemoryContext(value: unknown): SurferAskMemoryCon
       baseContextDigest: r.baseContextDigest,
       packet: r.packet,
       ...(r.environmentalReports ? { environmentalReports: r.environmentalReports } : {}),
+      ...(r.pumpReview ? { pumpReview: r.pumpReview } : {}),
     }) !== r.digest
   )
     throw surferFailure('Ask memory context digest changed.');
@@ -518,6 +528,7 @@ export function pinSurferAskMemory(
   baseContextDigest: string,
   packet: SurferAskMemoryPacket | null,
   environmentalReports?: SurferAskEnvironmentalReport[],
+  pumpReview?: SurferAskPumpReview,
 ): SurferAskMemoryContext {
   const body = {
     revision: packet?.rules?.some((r) =>
@@ -546,6 +557,7 @@ export function pinSurferAskMemory(
     baseContextDigest,
     packet,
     ...(environmentalReports ? { environmentalReports } : {}),
+    ...(pumpReview ? { pumpReview } : {}),
   };
   return decodeSurferAskMemoryContext({ ...body, digest: surferDigest(body) });
 }

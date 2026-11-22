@@ -1,0 +1,29 @@
+{
+  "record": "ZeMA stable cooler 20% FS1 pump leakage measurements",
+  "dataset": "UCI 447 / ZeMA, doi:10.24432/C5CW21",
+  "archiveDigest": "sha256:24128aad2ee45eea7e6b63ebbd9992cdf25d0483a2cebefbfc13bc69079af1f2",
+  "method": "Nearest-rank P90 minus P10 of FS1 within each 60-second cycle, rounded to 0.25 L/min",
+  "measurements": [
+    {
+      "cycle": 1218,
+      "cooler": 20,
+      "stable": true,
+      "flowSpread": 7.5,
+      "measurementDigest": "sha256:874a1b0455e034d4f6e8a2a4e9727ee917a37dbb7aad2fa6955a56acef8e2e25"
+    },
+    {
+      "cycle": 1252,
+      "cooler": 20,
+      "stable": true,
+      "flowSpread": 7.75,
+      "measurementDigest": "sha256:af79ba66908433a40b71624c308ea55edb626481b4131d80c3232d8bf0e9b43f"
+    },
+    {
+      "cycle": 1300,
+      "cooler": 20,
+      "stable": true,
+      "flowSpread": 8.0,
+      "measurementDigest": "sha256:23cff4e1e415374f119dea22710703b97cadf5f45debf7735cf44033fb7a3c64"
+    }
+  ]
+}

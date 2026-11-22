@@ -34,11 +34,14 @@ import { createSurferApplicationRuntime } from '../../assemblies/shotgun-app/src
 import { randomUUID, createHash } from 'node:crypto';
 import { ruleReviewFixture } from '../helpers/surfer-rule-review-fixture.js';
 import { buildBoundedWorker } from '../helpers/surfer-bounded-induction-fixture.js';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
+import type { IntakeSubmissionSnapshot } from '../../packages/contracts/src/frontend-sources.js';
+import type { AskAnswerRunSnapshot } from '../../packages/contracts/src/frontend-ask.js';
 import { createDefaultLaunchDeps } from '../../scripts/launch-default-deps.js';
 import { Pool } from 'pg';
+import { PostgresSurferAskMemory } from '../../adapters/surfer-ask-memory-postgres/src/index.js';
 import { PostgresSurferSourceSession } from '../../adapters/surfer-shotgun-source-postgres/src/index.js';
 import { beforeAll, afterAll, beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import {
@@ -522,6 +525,7 @@ describe.skipIf(!target)('Real Shotgun startup with native Surfer and fake HTTP 
       mode: 'native' | 'default' | 'recovery' | 'standard-meaning' = 'native',
       answers = false,
       meaning?: SurferMeaningApplicationOptions,
+      spaDirectory?: string,
     ) => {
       if (upgradedClone) {
         app = (await createDefaultLaunchDeps().startApplication({
@@ -564,6 +568,7 @@ describe.skipIf(!target)('Real Shotgun startup with native Surfer and fake HTTP 
           port: 0,
           noSignals: true,
           disableAskWorker: !answers,
+          ...(spaDirectory ? { spaDirectory } : {}),
           recoveryIntervalMs: false,
           actionFeedbackOutboxIntervalMs: false,
           sourceRefreshIntervalMs: false,
@@ -600,14 +605,14 @@ describe.skipIf(!target)('Real Shotgun startup with native Surfer and fake HTTP 
       });
       return { code: response.status, body: await response.json() };
     };
-    const submit = async () => {
+    const submit = async (text = f.item.text, label = 'Surfer app fixture') => {
       const draftId = 'draft-' + randomUUID(),
         itemId = 'item-' + randomUUID(),
         query = new URLSearchParams({
           draftId,
           itemId,
           kind: 'DIRECT_TEXT',
-          label: 'Surfer app fixture',
+          label,
           mediaType: 'text/plain',
         });
       const staged = await network(base + '/product-api/frontend/sources/staging/bytes?' + query, {
@@ -617,7 +622,7 @@ describe.skipIf(!target)('Real Shotgun startup with native Surfer and fake HTTP 
           cookie: `shotgun_session=${actual.session.sessionToken}`,
           'x-csrf-token': actual.session.csrfToken,
         },
-        body: f.item.text,
+        body: text,
       });
       const staging = await staged.json();
       expect(staged.status, JSON.stringify(staging)).toBe(200);
@@ -641,7 +646,7 @@ describe.skipIf(!target)('Real Shotgun startup with native Surfer and fake HTTP 
             {
               itemId,
               kind: 'DIRECT_TEXT',
-              label: 'Surfer app fixture',
+              label,
               stagingReference: staging.receipt.stagingReference,
             },
           ],
@@ -2505,6 +2510,254 @@ describe.skipIf(!target)('Real Shotgun startup with native Surfer and fake HTTP 
     expect(f.control.surfer).toBe(0);
     expect(await f.grants()).toEqual([]);
   });
+  it('publishes source-bound ZeMA pump hypothesis reviews without calling the Ask provider', async () => {
+    const app = await setup();
+    const prefix = 'docs/implementation/surfer-2026-10-27/execution/phase12-pump-review-';
+    const [hypothesis, measurements] = await Promise.all(
+      ['hypothesis', 'measurements'].map((kind) => readFile(prefix + kind + '.txt', 'utf8')),
+    );
+    const session = new PostgresSurferSourceSession(pool);
+    const select = async (stored: { sourceId: string; sourceVersionId: string }) => {
+      const { rootEvidenceId } = await session.withSnapshotV2(
+        app.actual.request,
+        async (s) => (await s.readMaterialV2(stored.sourceId)).material,
+      );
+      return {
+        sourceId: stored.sourceId,
+        sourceVersionId: stored.sourceVersionId,
+        evidenceIds: [rootEvidenceId],
+      };
+    };
+    const browserCheck = process.env.SHOTGUN_SURFER_PUMP_RELEASE_BROWSER === '1';
+    const web = browserCheck ? path.resolve('apps/shotgun-web/dist') : undefined;
+    await app.start('default', true, undefined, web);
+    const labels = ['ZeMA review hypothesis', 'ZeMA FS1 measurements'];
+    const upload = async (text: string, label: string) => {
+      const submitted = await app.submit(text, label);
+      const submissionPath =
+        '/product-api/frontend/sources/submissions/' + submitted.submission.submissionId;
+      let batch: IntakeSubmissionSnapshot | undefined;
+      await expect
+        .poll(
+          async () => {
+            const response = await network(app.httpBase() + submissionPath, {
+              headers: { cookie: `shotgun_session=${app.actual.session.sessionToken}` },
+            });
+            expect(response.status).toBe(200);
+            batch = (await response.json()).submission;
+            const item = batch?.items[0];
+            if (item?.safeFailure || item?.duplicateDecisionId)
+              return item.safeFailure?.code ?? 'DUPLICATE';
+            return batch?.state;
+          },
+          { timeout: 25_000 },
+        )
+        .toBe('SUCCEEDED');
+      const produced = batch?.items[0]?.producedResource;
+      if (!produced) throw new Error('Upload did not return Source lineage.');
+      return select(produced);
+    };
+    const selected = browserCheck
+      ? [await upload(hypothesis!, labels[0]!), await upload(measurements!, labels[1]!)]
+      : [
+          await select(await app.actual.source(hypothesis!)),
+          await select(await app.actual.source(measurements!)),
+        ];
+    const altered = await select(
+      await app.actual.source(measurements!.replace('"flowSpread": 8.0', '"flowSpread": 7.0')),
+    );
+    const ask = async (
+      question: string,
+      selections = selected,
+      expected: 'SUCCEEDED' | 'FAILED' = 'SUCCEEDED',
+    ) => {
+      const result = await app.post('/product-api/frontend/ask/questions', {
+        schemaVersion: '1.0.0',
+        question,
+        mode: 'SOURCE_EXPLORATION',
+        sourceSelections: selections,
+        clientRequestId: randomUUID(),
+        idempotencyKey: randomUUID(),
+      });
+      expect(result.code, JSON.stringify(result.body)).toBe(200);
+      const id = result.body.submission.answerRun.answerRunId;
+      await expect
+        .poll(
+          async () =>
+            (
+              await pool.query(
+                'SELECT state FROM frontend_ask.answer_runs WHERE answer_run_id=$1',
+                [id],
+              )
+            ).rows[0]?.state,
+          { timeout: 25_000 },
+        )
+        .toBe(expected);
+      const visible = await network(
+        app.httpBase() + '/product-api/frontend/ask/answer-runs/' + id,
+        {
+          headers: { cookie: `shotgun_session=${app.actual.session.sessionToken}` },
+        },
+      );
+      expect(visible.status).toBe(200);
+      const { answerRun } = (await visible.json()) as { answerRun: AskAnswerRunSnapshot };
+      return { id, answerRun };
+    };
+    const question = (cycle: number) => `ZeMA ${cycle}번 주기 펌프 누설 검토`;
+    const modelCalls = app.control.ask;
+    for (const [cycle, value, signal] of [
+      [1218, '7.50', '있음'],
+      [1252, '7.75', '있음'],
+      [1300, '8.00', '없음'],
+    ] as const) {
+      const { id, answerRun } = await ask(question(cycle));
+      expect(answerRun.provider).toMatchObject({ model: 'surfer-hypothesis-review' });
+      expect(answerRun.capabilities).toEqual(['EXPORT']);
+      const statement = answerRun.statements[0]!;
+      expect(statement.text).toContain(`검토용 판정 — 누설 신호 ${signal}`);
+      expect(statement.text).toContain(`은 ${value} L/min`);
+      expect(statement.text).toContain('정식 활성 등록은 독립 실측 검증 대기');
+      expect(statement.citations.map((c) => c.evidenceId).sort()).toEqual(
+        selected.flatMap((s) => s.evidenceIds).sort(),
+      );
+      const pinned = (
+        await pool.query(
+          'SELECT context FROM frontend_ask.surfer_memory_context WHERE answer_run_id=$1',
+          [id],
+        )
+      ).rows[0]?.context;
+      expect(pinned.pumpReview).toMatchObject({
+        cycle,
+        outcome: signal === '있음' ? 'TRUE' : 'FALSE',
+      });
+      if (cycle === 1252) {
+        const draft = await app.post(
+          `/product-api/frontend/ask/answer-runs/${id}/transition-seed`,
+          {
+            schemaVersion: '1.0.0',
+            kind: 'INTAKE_DRAFT',
+            clientRequestId: randomUUID(),
+            idempotencyKey: randomUUID(),
+          },
+        );
+        expect(draft.code, JSON.stringify(draft.body)).toBe(400);
+        expect(JSON.stringify(draft.body)).toContain('cannot create a transition seed');
+      }
+    }
+    for (const [query, sources, expectedText, citations] of [
+      [question(9999), selected, '해당 주기의 적용 조건', 2],
+      ['다른시험대 1252번 주기 펌프 누설 검토', selected, '검토 범위는 ZeMA', 0],
+      [question(1252), [selected[0]!], '모두 확인하지 못했습니다', 1],
+      [question(1300), [selected[0]!, altered], '모두 확인하지 못했습니다', 1],
+    ] as const) {
+      const { answerRun } = await ask(query, [...sources]);
+      expect(answerRun.capabilities).toEqual(['EXPORT']);
+      expect(answerRun.statements[0]?.text).toContain('판단 보류');
+      expect(answerRun.statements[0]?.text).toContain(expectedText);
+      expect(answerRun.statements[0]?.citations).toHaveLength(citations);
+    }
+
+    if (browserCheck) {
+      const base = app.httpBase();
+      expect((await network(base + '/health')).status).toBe(200);
+      const { chromium } = await import('@playwright/test');
+      const browser = await chromium.launch({ headless: true, args: ['--disable-gpu'] });
+      try {
+        const webSession = await new PostgresAuthRepository(pool).createSession(
+          principalId,
+          app.actual.projectId,
+          new Date(Date.now() + 3600_000).toISOString(),
+        );
+        const context = await browser.newContext({ locale: 'en-US' });
+        await context.addCookies([
+          { name: 'shotgun_session', value: webSession.sessionToken, url: base },
+        ]);
+        const page = await context.newPage();
+        const errors: string[] = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await page.route('**/*', (route) =>
+          new URL(route.request().url()).origin === base ? route.continue() : route.abort(),
+        );
+        await page.goto(base + '/ask');
+        await page
+          .locator('#global-ask-mode')
+          .selectOption('SOURCE_EXPLORATION', { timeout: 15_000 });
+        for (const label of labels)
+          await page.getByRole('checkbox', { name: new RegExp(label) }).check({ timeout: 15_000 });
+        await page.locator('#global-ask-question').fill(question(1252));
+        const sent = page.waitForResponse(
+          (r) =>
+            new URL(r.url()).pathname === '/product-api/frontend/ask/questions' &&
+            r.request().method() === 'POST',
+        );
+        await page.locator('form:has(#global-ask-question) button[type=submit]').click();
+        const response = await sent;
+        expect(response.status()).toBe(200);
+        const request = response.request().postDataJSON();
+        expect(request.sourceSelections).toHaveLength(2);
+        expect(
+          request.sourceSelections.map((s: { evidenceIds: string[] }) => s.evidenceIds),
+        ).toEqual([[], []]);
+        await page
+          .getByText(/검토용 판정 — 누설 신호 있음.*7\.75 L\/min/)
+          .waitFor({ timeout: 25_000 });
+        const citations = await page
+          .locator('.ask-citation-list a')
+          .evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+        expect(citations.sort()).toEqual(
+          selected
+            .map(
+              ({ sourceId, sourceVersionId }) =>
+                `/sources/${encodeURIComponent(sourceId)}?version=${encodeURIComponent(sourceVersionId)}`,
+            )
+            .sort(),
+        );
+        expect(errors).toEqual([]);
+        expect(app.control.ask).toBe(modelCalls);
+        await mkdir('.data/surfer-pump-release', { recursive: true });
+        await writeFile(
+          '.data/surfer-pump-release/browser.json',
+          JSON.stringify({
+            status: 'PASS',
+            health: 200,
+            questionStatus: response.status(),
+            selectedSources: request.sourceSelections.length,
+            explicitEvidenceIds: 0,
+            citations: citations.length,
+            cycle: 1252,
+            flowSpread: 7.75,
+            providerCalls: 0,
+            pageErrors: errors.length,
+          }),
+        );
+      } finally {
+        await browser.close();
+      }
+    }
+    const validate = PostgresSurferAskMemory.prototype.validate;
+    let validated = 0;
+    const changeBeforePublication = vi
+      .spyOn(PostgresSurferAskMemory.prototype, 'validate')
+      .mockImplementation(async function (this: PostgresSurferAskMemory, scope, claimed, context) {
+        await validate.call(this, scope, claimed, context);
+        if (context.pumpReview && ++validated === 3)
+          await app.actual.source(measurements! + '\nRevised measurement document.', {
+            sourceId: selected[1]!.sourceId,
+          });
+      });
+    try {
+      const { answerRun } = await ask(question(1300), selected, 'FAILED');
+      expect(answerRun.failure?.code).toBe('STALE_VERSION');
+      expect(answerRun.statements).toEqual([]);
+    } finally {
+      changeBeforePublication.mockRestore();
+    }
+    expect(app.control.ask).toBe(modelCalls);
+    const ordinary = await ask('이 문서가 기록하는 측정 대상을 설명해.', [selected[0]!]);
+    expect(ordinary.answerRun.provider?.model).not.toBe('surfer-hypothesis-review');
+    expect(app.control.ask).toBe(modelCalls + 1);
+  });
+
   async function thermalCyclingAsk() {
     const app = await setup();
     const session = new PostgresSurferSourceSession(pool);

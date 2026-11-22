@@ -1,6 +1,11 @@
 import type { SurferAskMeaningProposalReceipt } from '../../../packages/contracts/src/surfer-ask-discovery.js';
 import { randomUUID } from 'node:crypto';
 import type { SurferAskMemoryContext } from '../../../packages/contracts/src/surfer-ask-memory.js';
+import {
+  SURFER_PUMP_REVIEW_PROVIDER,
+  readSurferPumpReviewQuestion,
+  type SurferAskPumpReview,
+} from '../../../packages/contracts/src/surfer-ask-pump-review.js';
 
 import {
   ShotgunError,
@@ -397,6 +402,7 @@ export type AskAnswerExecutionRepositoryPort = {
   }): Promise<void>;
   complete(input: {
     readonly meaningProposal?: SurferAskMeaningProposalReceipt;
+    readonly reviewOnly?: true;
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly attemptNumber: number;
@@ -1077,7 +1083,13 @@ export class AskAnswerExecutionService {
         effectiveProviderPolicyFingerprint: effectiveProviderPolicy.policyFingerprint,
         workerId,
       });
-      if (context.contextStatus === 'NO_SUPPORTED_ANSWER') {
+      const supportedContext = context.contextStatus !== 'NO_SUPPORTED_ANSWER';
+      const memory =
+        this.memoryContext &&
+        (supportedContext || readSurferPumpReviewQuestion(context.snapshot.question))
+          ? await this.memoryContext.prepare(scope, claimed)
+          : undefined;
+      if (!supportedContext && !memory?.pumpReview) {
         return await this.repository.complete({
           scope,
           answerRunId: context.snapshot.answerRunId,
@@ -1095,40 +1107,41 @@ export class AskAnswerExecutionService {
           workerId,
         });
       }
-      const surferMemory = this.memoryContext
-        ? await this.memoryContext.prepare(scope, claimed)
-        : undefined;
-      if (surferMemory) await this.memoryContext!.validate(scope, claimed, surferMemory);
-      const result = await provider.execute({
-        ...(surferMemory ? { surferMemory } : {}),
-        answerRunId: context.snapshot.answerRunId,
-        question: context.snapshot.question,
-        mode: context.snapshot.mode,
-        context: context.context,
-        resolvedContextDigest: context.resolvedContextDigest,
-        queryPlanRevision: context.queryPlanRevision,
-        dataPolicyVersion: effectiveProviderPolicy.policyFingerprint,
-        effectiveProviderPolicy: {
-          eligible: effectiveProviderPolicy.eligible,
-          policyFingerprint: effectiveProviderPolicy.policyFingerprint,
-        },
-        ...(executionPin ? { executionPin } : {}),
-        signal: controller.signal,
-        onPartial: async (partialText) => {
-          // Enhanced answers are published only after final currentness checks.
-          if (surferMemory?.packet) return;
-          if (!partialText.trim() || controller.signal.aborted) return;
-          await this.repository.appendPartial({
-            scope,
+      if (memory) await this.memoryContext!.validate(scope, claimed, memory);
+      const review = memory?.pumpReview;
+      const result: AskAnswerProviderResult = review
+        ? answerPumpReview(review)
+        : await provider.execute({
+            ...(memory ? { surferMemory: memory } : {}),
             answerRunId: context.snapshot.answerRunId,
-            attemptId: attempt.attemptId,
-            attemptNumber: attempt.attemptNumber,
-            partialText,
-            workerId,
+            question: context.snapshot.question,
+            mode: context.snapshot.mode,
+            context: context.context,
+            resolvedContextDigest: context.resolvedContextDigest,
+            queryPlanRevision: context.queryPlanRevision,
+            dataPolicyVersion: effectiveProviderPolicy.policyFingerprint,
+            effectiveProviderPolicy: {
+              eligible: effectiveProviderPolicy.eligible,
+              policyFingerprint: effectiveProviderPolicy.policyFingerprint,
+            },
+            ...(executionPin ? { executionPin } : {}),
+            signal: controller.signal,
+            onPartial: async (partialText) => {
+              // Enhanced answers are published only after final currentness checks.
+              if (memory?.packet) return;
+              if (!partialText.trim() || controller.signal.aborted) return;
+              await this.repository.appendPartial({
+                scope,
+                answerRunId: context.snapshot.answerRunId,
+                attemptId: attempt.attemptId,
+                attemptNumber: attempt.attemptNumber,
+                partialText,
+                workerId,
+              });
+            },
           });
-        },
-      });
       if (
+        !review &&
         executionPin &&
         (result.provider.provider !== executionPin.providerId ||
           result.provider.model !== executionPin.modelId)
@@ -1175,7 +1188,7 @@ export class AskAnswerExecutionService {
         });
       }
       const citations = this.validateCitations(context, result.citations);
-      if (surferMemory) await this.memoryContext!.validate(scope, claimed, surferMemory);
+      if (memory) await this.memoryContext!.validate(scope, claimed, memory);
       const generatedObservationReferences = this.validateGeneratedObservationReferences(
         context,
         result.generatedObservationReferences ?? [],
@@ -1185,6 +1198,7 @@ export class AskAnswerExecutionService {
         answerRunId: context.snapshot.answerRunId,
         attemptNumber: attempt.attemptNumber,
         answer: result.answer,
+        ...(review ? { reviewOnly: true as const } : {}),
         ...(result.meaningProposal ? { meaningProposal: result.meaningProposal } : {}),
         citations,
         ...(generatedObservationReferences.length ? { generatedObservationReferences } : {}),
@@ -1508,6 +1522,30 @@ export class AskAnswerExecutionService {
     }
     return validated;
   }
+}
+
+function answerPumpReview(review: SurferAskPumpReview): AskAnswerProviderResult {
+  const citations = review.evidence.map(({ evidenceId }) => ({ evidenceId }));
+  const pending = '정식 활성 등록은 독립 실측 검증 대기 중입니다.';
+  if (review.outcome === 'UNKNOWN') {
+    const reasons = {
+      RIG_OUT_OF_SCOPE: '이 가설의 검토 범위는 ZeMA 시험대입니다.',
+      MISSING_EVIDENCE: '현재 선택한 원문에서 승인된 가설과 실측 기록을 모두 확인하지 못했습니다.',
+      CYCLE_OUT_OF_SCOPE:
+        '선택한 실측 원문에서 해당 주기의 적용 조건과 FS1 값을 확인하지 못했습니다.',
+    };
+    return {
+      answer: `검토용 판정 — 판단 보류. ${reasons[review.reason]} ${pending}`,
+      citations,
+      provider: SURFER_PUMP_REVIEW_PROVIDER,
+    };
+  }
+  const signal = review.outcome === 'TRUE' ? '있음' : '없음';
+  return {
+    answer: `검토용 판정 — 누설 신호 ${signal}. ZeMA ${review.cycle}번 주기(안정 상태, 냉각기 20%)의 FS1 유량 P90−P10은 ${review.flowSpread.toFixed(2)} L/min입니다. 가설은 ${review.limit.toFixed(2)} L/min 이하를 누설 신호로 판정합니다. ${pending}`,
+    citations,
+    provider: SURFER_PUMP_REVIEW_PROVIDER,
+  };
 }
 
 export type AskAnswerRunTransitionSeedRequestForService = AskAnswerRunTransitionSeedRequest;

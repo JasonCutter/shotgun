@@ -336,6 +336,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
 
   async complete(input: {
     readonly scope: AskExecutionScope;
+    readonly reviewOnly?: true;
     readonly answerRunId: string;
     readonly attemptNumber: number;
     readonly answer: string;
@@ -366,11 +367,15 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
         ? {}
         : { dataPolicyVersion: input.dataPolicyVersion }),
     });
+    const context = record.contexts.get(attempt.attemptId);
+    if (context && input.reviewOnly)
+      record.contexts.set(attempt.attemptId, { ...context, contextStatus: 'NO_SUPPORTED_ANSWER' });
     this.update(record, {
       state: 'SUCCEEDED',
       capabilities: askSucceededCapabilitiesForContextStatus(
-        record.contexts.get(attempt.attemptId)?.contextStatus ??
-          this.contextFor(record, record.evidence).contextStatus,
+        input.reviewOnly
+          ? 'NO_SUPPORTED_ANSWER'
+          : (context?.contextStatus ?? this.contextFor(record, record.evidence).contextStatus),
       ),
       statements: [
         {
